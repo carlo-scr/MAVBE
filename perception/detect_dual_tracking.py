@@ -48,6 +48,9 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors
 from utils.torch_utils import select_device, smart_inference_mode
 
+import torchvision.transforms as T   # <-- Add this import here
+import torchreid
+
 
 # Global buffer for trails
 data_deque = {}
@@ -135,7 +138,7 @@ def draw_boxes(frame, bbox_xyxy, draw_trails, identities=None, categories=None, 
 
 @smart_inference_mode()
 def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/images', data=ROOT / 'data/coco.yaml',
-        imgsz=(640,640), conf_thres=0.25, iou_thres=0.45, max_det=1000,
+        imgsz=(640,640), conf_thres=0.75, iou_thres=0.55, max_det=1000,
         device='', view_img=False, nosave=False, draw_trails=False,
         project=ROOT / 'runs/detect', name='exp', exist_ok=False,
         half=False, dnn=False, vid_stride=1):
@@ -151,11 +154,38 @@ def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/i
     save_dir = increment_path(Path(project)/name, exist_ok=exist_ok)
     save_dir.mkdir(parents=True, exist_ok=True)
 
+    # ---------------- VIDEO WRITER SETUP ----------------
+    save_video_path = ROOT/f'runs/detect/trajectories_{save_plot_name}.mp4'
+    vid_writer = None
+    # ----------------------------------------------------
+
     # Load YOLO model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)
+
+
+
+    # Initialize ReID model
+    reid_model = torchreid.models.build_model(
+        name='osnet_x1_0',   
+        num_classes=1000,
+        pretrained=True
+    )
+
+    reid_model.eval()
+    reid_model.to(device)
+
+    reid_transform = T.Compose([
+        T.ToPILImage(),
+        T.Resize((256, 128)),   # standard ReID size
+        T.ToTensor(),
+        T.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    ])
 
     # Dataloader
     bs = 1
@@ -167,13 +197,13 @@ def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/i
         dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-    vid_path, vid_writer = [None]*bs, [None]*bs
+    # vid_path, vid_writer = [None]*bs, [None]*bs
 
     # Initialize in-repo tracker (Behavioral EKF)
     # metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance=0.2, nn_budget=100)
     metric = nn_matching.NearestNeighborDistanceMetric(
         metric="cosine",
-        matching_threshold=0.2,  # this was max_cosine_distance
+        matching_threshold=0.4,  # this was max_cosine_distance
         budget=100               # this was nn_budget
     )
     tracker = Tracker(metric)
@@ -182,7 +212,7 @@ def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/i
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:
-        print("here")
+        # print("here")
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
             im = im.half() if model.fp16 else im.float()
@@ -206,6 +236,23 @@ def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/i
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
             ims = im0.copy()
 
+
+
+
+            # Initialize video writer once (for first frame)
+            if vid_writer is None:
+                if vid_cap:  # if input is a video
+                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                else:
+                    fps = 30  # default fps if webcam or images
+
+                h, w = ims.shape[:2]
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                vid_writer = cv2.VideoWriter(str(save_video_path), fourcc, fps, (w, h))
+
+
+
+
             if len(det):
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
                 xywh_bboxs, confs, oids = [], [], []
@@ -227,8 +274,42 @@ def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/i
                     y_tl = cy - h/2
                     tlwh = [x_tl, y_tl, w, h]
                     # feature = np.zeros(128)
-                    feature = np.ones(128) * 1e-6
-                    detections.append(Detection(tlwh, conf, feature))
+                    # feature = np.ones(128) * 1e-6
+                    # detections.append(Detection(tlwh, conf, feature))
+
+                    detections = []
+
+                    for j in range(len(xywh_bboxs)):
+                        cx, cy, w, h = xywh_bboxs[j]
+                        conf = confs[j]
+                        x_tl = int(cx - w/2)
+                        y_tl = int(cy - h/2)
+                        w = int(w)
+                        h = int(h)
+
+                        # Crop detection from original frame
+                        crop = im0[y_tl:y_tl+h, x_tl:x_tl+w]
+
+                        if crop.size == 0:
+                            continue
+
+                        # Convert BGR → RGB
+                        crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+
+                        # Apply transform
+                        input_tensor = reid_transform(crop).unsqueeze(0).to(device)
+
+                        with torch.no_grad():
+                            features = reid_model(input_tensor)
+
+                        feature = features.cpu().numpy().flatten()
+                        feature = feature / np.linalg.norm(feature)
+
+                        tlwh = [x_tl, y_tl, w, h]
+                        detections.append(Detection(tlwh, conf, feature))
+
+
+
                 print(len(detections))
                 # Update tracker
                 tracker.predict()
@@ -249,6 +330,8 @@ def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/i
                     identities = outputs[:, 4]
                     object_id = outputs[:, 5]
                     draw_boxes(ims, bbox_xyxy, draw_trails, identities, object_id)
+                    if vid_writer is not None:
+                        vid_writer.write(ims)
 
             # Show image
             if view_img and False:
@@ -259,6 +342,10 @@ def run(weights=ROOT / 'yolo.pt', save_plot_name = "yash", source=ROOT / 'data/i
                 cv2.imshow(str(p), ims)
                 cv2.waitKey(1)
 
+    if vid_writer is not None:
+        vid_writer.release()
+        print(f"[INFO] Video saved to {save_video_path}")
+
     save_trajectories(data_deque, save_path=ROOT/f'runs/detect/trajectories_{save_plot_name}.png')
 
 def parse_opt():
@@ -268,7 +355,7 @@ def parse_opt():
     parser.add_argument('--source', type=str, default=ROOT / 'data/images', help='file/dir/URL/glob/webcam')
     parser.add_argument('--data', type=str, default=ROOT / 'yolov9/data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640])
-    parser.add_argument('--conf-thres', type=float, default=0.25)
+    parser.add_argument('--conf-thres', type=float, default=0.75)
     parser.add_argument('--iou-thres', type=float, default=0.45)
     parser.add_argument('--max-det', type=int, default=1000)
     parser.add_argument('--device', default='')

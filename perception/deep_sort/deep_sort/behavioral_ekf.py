@@ -31,11 +31,11 @@ class BehavioralEKF:
         self.B_soc = 0.5  # Interaction range
         self.pedestrian_radius = 0.3 # meters (or pixel equivalent)
 
-        # Process Noise Covariance (Q) - Tune these!
+        # Process Noise Covariance (Q) 
         self._Q = np.diag([0.1, 0.1, 0.5, 0.1, 0.1]) ** 2
 
         # Measurement Noise Covariance (R) - Assuming we measure [p_x, p_y]
-        self._R = np.diag([0.05, 0.05]) ** 2
+        self._R = np.diag([0.2, 0.2]) ** 2
 
     def _compute_social_force(self, current_state, other_states):
         """Calculates the repulsive social force from neighboring pedestrians."""
@@ -85,8 +85,8 @@ class BehavioralEKF:
 
         # Apply Social Force as control input (F = ma, assume m=1)
         # We inject the force into the position prediction directly (0.5 * a * t^2)
-        x_pred[0] += 0.5 * f_soc[0] * (dt ** 2)
-        x_pred[1] += 0.5 * f_soc[1] * (dt ** 2)
+        # x_pred[0] += 0.5 * f_soc[0] * (dt ** 2)
+        # x_pred[1] += 0.5 * f_soc[1] * (dt ** 2)
 
         # 3. Calculate Jacobian (F) for Covariance update
         # Simplified Jacobian for the CT model
