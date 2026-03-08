@@ -1,0 +1,117 @@
+# ==============================================================================
+# Simplex-Splat Configuration
+# ==============================================================================
+# Modify this file or override via CLI args at runtime.
+
+# --- CARLA Connection ---------------------------------------------------------
+carla:
+  host: "localhost"
+  port: 2000
+  timeout: 20.0
+  map: "Town03"
+  synchronous: true
+  delta_seconds: 0.05          # 20 Hz simulation tick
+  no_rendering: false
+
+# --- Vehicle & Sensors -------------------------------------------------------
+vehicle:
+  blueprint: "vehicle.tesla.model3"
+  spawn_index: null             # null = random
+
+sensors:
+  rgb:
+    width: 960
+    height: 540
+    fov: 90
+    fps: 20
+    position: [1.5, 0.0, 2.0]  # x-forward, y-right, z-up (vehicle frame)
+    rotation: [-15.0, 0.0, 0.0] # pitch, yaw, roll
+  depth:
+    width: 960
+    height: 540
+    fov: 90
+    position: [1.5, 0.0, 2.0]
+    rotation: [-15.0, 0.0, 0.0]
+  semantic:
+    width: 960
+    height: 540
+    fov: 90
+    position: [1.5, 0.0, 2.0]
+    rotation: [-15.0, 0.0, 0.0]
+
+# --- SplaTAM (3DGS Online Mapping) -------------------------------------------
+splatam:
+  enabled: true
+  config_path: null             # path to SplaTAM YAML (auto-generated if null)
+  sliding_window_m: 50.0        # spatial window radius (metres)
+  max_gaussians: 500000         # cap for O(1) memory bound
+  densification_interval: 5     # add Gaussians every N frames
+  pruning_opacity_threshold: 0.01
+  learning_rate:
+    position: 0.00016
+    opacity: 0.05
+    scaling: 0.005
+    rotation: 0.001
+    color: 0.0025
+  warmup_frames: 10             # frames before monitor activates
+
+# --- Safety Monitor -----------------------------------------------------------
+monitor:
+  type: "semantic"              # "semantic" | "geometric" (ablation)
+
+  # Depth residual thresholds (metres)
+  tau_fn: 1.5                   # false-negative: dynamic object missed
+  tau_fp: 2.0                   # false-positive: phantom obstacle
+
+  # Semantic classes considered safety-critical
+  critical_dynamic_classes:     # CARLA semantic tags
+    - 4                         # Pedestrian
+    - 10                        # Vehicle
+    - 18                        # Bicycle (rider)
+  critical_static_classes:
+    - 12                        # TrafficSign  (includes Stop Sign)
+    - 6                         # TrafficLight
+
+  # Structural consistency
+  iou_threshold: 0.5            # min IoU for static features
+
+  # Pixel coverage gates (fraction of image)
+  min_critical_pixel_fraction: 0.001   # ignore regions < 0.1%
+
+  # Response time budget
+  max_response_time_ms: 100.0
+
+  # Exponential moving average for smoothing (1.0 = no smoothing)
+  ema_alpha: 0.3
+
+  # Consecutive violations before triggering (debounce)
+  violation_patience: 2
+
+# --- Emergency Controller -----------------------------------------------------
+emergency:
+  deceleration_mps2: 8.0        # m/s^2  (approx 0.8 g)
+  max_steer_lock: 0.0           # straight-line braking
+  hold_duration_s: 3.0          # seconds to hold full brake after trigger
+
+# --- Evaluation / Logging -----------------------------------------------------
+evaluation:
+  output_dir: "runs/simplex_splat"
+  log_every_n_frames: 1
+  save_renders: true            # save 3DGS rendered vs GT images
+  save_residual_maps: true
+  record_video: true
+  video_fps: 20
+
+# --- Scenarios ----------------------------------------------------------------
+scenarios:
+  ghost:
+    description: "Pedestrian jaywalks across vehicle path"
+    pedestrian_spawn_delay_s: 5.0
+    pedestrian_speed_mps: 1.4   # average walking speed
+    crossing_distance_m: 15.0   # ahead of vehicle
+
+  blind_map:
+    description: "Large static obstacle or Stop Sign in path"
+    obstacle_type: "static.prop.streetbarrier"
+    spawn_distance_m: 30.0
+    stop_sign_iou_check: true
