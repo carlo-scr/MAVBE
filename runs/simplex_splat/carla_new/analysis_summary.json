@@ -1,0 +1,296 @@
+{
+  "failure_distribution": {
+    "total_tracks": 7,
+    "lifetime_mean": 53.0,
+    "lifetime_std": 58.595465451078816,
+    "weibull_k": 0.7738,
+    "weibull_lam": 45.8985,
+    "gap_mean": 26.666666666666668,
+    "innovation_mean": 2.1648,
+    "innovation_std": 9.635,
+    "fragmentation_rate": 0.0355,
+    "p_loss_per_frame": 0.215633
+  },
+  "reachability": {
+    "horizon_frames": 30,
+    "dt_s": 0.05,
+    "tracks": {
+      "4": {
+        "ttc_s": null,
+        "max_p_collision": 0.0,
+        "reach_sets": [
+          {
+            "step": 1,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 4.35,
+            "semi_b": 5.2,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 2,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 5.37,
+            "semi_b": 6.71,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 3,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 6.22,
+            "semi_b": 7.94,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 4,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 6.97,
+            "semi_b": 9.0,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 5,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 7.65,
+            "semi_b": 9.95,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 6,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 8.27,
+            "semi_b": 10.82,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 7,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 8.85,
+            "semi_b": 11.62,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 8,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 9.39,
+            "semi_b": 12.37,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 9,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 9.9,
+            "semi_b": 13.08,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 10,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 10.39,
+            "semi_b": 13.75,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 11,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 10.86,
+            "semi_b": 14.39,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 12,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 11.3,
+            "semi_b": 15.0,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 13,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 11.73,
+            "semi_b": 15.59,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 14,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 12.15,
+            "semi_b": 16.16,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 15,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 12.55,
+            "semi_b": 16.7,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 16,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 12.94,
+            "semi_b": 17.23,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 17,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 13.32,
+            "semi_b": 17.75,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 18,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 13.68,
+            "semi_b": 18.25,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 19,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 14.04,
+            "semi_b": 18.73,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 20,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 14.39,
+            "semi_b": 19.21,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 21,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 14.73,
+            "semi_b": 19.67,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 22,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 15.06,
+            "semi_b": 20.12,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 23,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 15.39,
+            "semi_b": 20.57,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 24,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 15.7,
+            "semi_b": 21.0,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 25,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 16.02,
+            "semi_b": 21.42,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 26,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 16.32,
+            "semi_b": 21.84,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 27,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 16.62,
+            "semi_b": 22.25,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 28,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 16.92,
+            "semi_b": 22.65,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 29,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 17.21,
+            "semi_b": 23.04,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          },
+          {
+            "step": 30,
+            "cx": 692.0,
+            "cy": 142.0,
+            "semi_a": 17.49,
+            "semi_b": 23.43,
+            "angle_deg": 90.0,
+            "p_collision": 0.0
+          }
+        ]
+      }
+    }
+  }
+}

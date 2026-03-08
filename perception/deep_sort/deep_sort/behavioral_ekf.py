@@ -276,6 +276,11 @@ class BehavioralEKFFilter(object):
             measurements = np.asarray(measurements)[:, :2]
         else:
             measurements = np.asarray(measurements)
+        # Ensure positive-definiteness: symmetrise then clamp eigenvalues
+        cov_proj = 0.5 * (cov_proj + cov_proj.T)
+        eigvals, eigvecs = np.linalg.eigh(cov_proj)
+        eigvals = np.clip(eigvals, 1e-2, None)
+        cov_proj = eigvecs @ np.diag(eigvals) @ eigvecs.T
         cholesky_factor = np.linalg.cholesky(cov_proj)
         d = measurements - mean_proj
         z = scipy.linalg.solve_triangular(
