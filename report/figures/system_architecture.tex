@@ -1,0 +1,80 @@
+% Simplex-Splat System Architecture Diagram
+\begin{tikzpicture}[
+    node distance=1.2cm and 1.4cm,
+    block/.style={draw, rounded corners, minimum height=1.0cm, minimum width=2.4cm, text centered, font=\small, line width=0.8pt},
+    sensor/.style={block, fill=lightcyan, draw=darkteal},
+    advanced/.style={block, fill=lightcyan!40, draw=tealaccent},
+    monitor/.style={block, fill=goldcol!30, draw=terracotta, line width=1.2pt},
+    baseline/.style={block, fill=dangerzone!15, draw=dangerzone, line width=1.2pt},
+    arrow/.style={-{Stealth[length=2.5mm]}, line width=0.7pt},
+    dasharrow/.style={-{Stealth[length=2.5mm]}, dashed, line width=0.7pt, draw=gray},
+    label/.style={font=\scriptsize\itshape, text=gray},
+    grouplabel/.style={font=\small\bfseries, text=darkteal},
+]
+
+% ---- Sensor Suite ----
+\node[sensor] (rgbd) {RGB-D Camera};
+\node[sensor, below=0.5cm of rgbd] (lidar) {Depth Sensor};
+\node[sensor, below=0.5cm of lidar] (semseg) {Semantic Seg.};
+
+% Group box around sensors
+\begin{scope}[on background layer]
+    \node[draw=darkteal, dashed, rounded corners, inner sep=8pt, fit=(rgbd)(semseg), fill=lightcyan!15] (sensorbox) {};
+\end{scope}
+\node[grouplabel, above=2pt of sensorbox.north] {Ground-Truth Sensors};
+
+% ---- Advanced Channel ----
+\node[advanced, right=2.0cm of rgbd] (splatam) {SplaTAM Pipeline};
+\node[advanced, below=0.5cm of splatam] (gmap) {3DGS Map $\mathcal{M}_k$};
+\node[advanced, below=0.5cm of gmap] (planner) {Path Planner};
+
+\begin{scope}[on background layer]
+    \node[draw=tealaccent, dashed, rounded corners, inner sep=8pt, fit=(splatam)(planner), fill=lightcyan!8] (acbox) {};
+\end{scope}
+\node[grouplabel, above=2pt of acbox.north, text=tealaccent] {Advanced Channel};
+
+% ---- Safety Monitor ----
+\node[monitor, right=2.0cm of splatam] (render) {Render $\mathbf{D}^{\text{pred}}_k$, $\mathbf{S}^{\text{pred}}_k$};
+\node[monitor, below=0.5cm of render] (residual) {Residual $\Delta D$};
+\node[monitor, below=0.5cm of residual] (decision) {$\phi_{\text{safe}}$ Check};
+
+\begin{scope}[on background layer]
+    \node[draw=terracotta, dashed, rounded corners, inner sep=8pt, fit=(render)(decision), fill=goldcol!8] (dmbox) {};
+\end{scope}
+\node[grouplabel, above=2pt of dmbox.north, text=terracotta] {Safety Monitor (DM)};
+
+% ---- Baseline Controller ----
+\node[baseline, right=2.0cm of residual, align=center] (ebrake) {\textbf{Emergency}\\\textbf{Braking}};
+
+% ---- Vehicle ----
+\node[block, below=1.4cm of planner, minimum width=3.5cm, fill=darkteal!10, draw=darkteal] (vehicle) {Vehicle Actuators};
+
+% ---- Arrows: Sensor to Advanced Channel ----
+\draw[arrow] (rgbd.east) -- (splatam.west) node[label, midway, above] {RGB-D};
+\draw[arrow] (splatam) -- (gmap);
+\draw[arrow] (gmap) -- (planner);
+
+% ---- Arrows: Map to Monitor ----
+\draw[arrow] (gmap.east) -- ++(0.5,0) |- (render.west) node[label, near end, above] {};
+
+% ---- Arrows: Sensors to Monitor ----
+\draw[arrow, draw=darkteal] (lidar.east) -- ++(0.8,0) |- (residual.west) node[label, near start, above] {};
+\draw[arrow, draw=darkteal] (semseg.east) -- ++(1.0,0) |- (decision.west);
+
+% ---- Monitor internal arrows ----
+\draw[arrow] (render) -- (residual);
+\draw[arrow] (residual) -- (decision);
+
+% ---- Monitor to Baseline ----
+\draw[arrow, draw=dangerzone, line width=1.0pt] (decision.east) -- ++(0.5,0) |- (ebrake.west) node[label, near end, above] {Violation!};
+
+% ---- Planner to Vehicle (normal operation) ----
+\draw[arrow, draw=safezone] (planner.south) -- (vehicle.north west) node[label, midway, left] {Normal};
+
+% ---- Baseline to Vehicle (emergency) ----
+\draw[arrow, draw=dangerzone, line width=1.0pt] (ebrake.south) |- (vehicle.north east) node[label, near end, right] {E-Stop};
+
+% ---- Feedback: Decision OK to Planner ----
+\draw[dasharrow, draw=safezone] (decision.south) -- ++(0,-0.4) -| (planner.east) node[label, near start, below right, xshift=4pt] {$\phi_{\text{safe}} = \top$};
+
+\end{tikzpicture}

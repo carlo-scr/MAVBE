@@ -1,0 +1,63 @@
+% ROC-style ablation over residual threshold
+% Placeholder data — replace with experimental results
+\begin{tikzpicture}
+\begin{axis}[
+    width=\columnwidth,
+    height=6cm,
+    xlabel={False Positive Rate (\%)},
+    ylabel={True Positive Rate (\%)},
+    xmin=0, xmax=30,
+    ymin=50, ymax=102,
+    grid=major,
+    grid style={gray!20},
+    legend style={
+        at={(0.98,0.02)},
+        anchor=south east,
+        font=\small,
+        draw=gray!50,
+        fill=white,
+        fill opacity=0.9,
+    },
+    tick label style={font=\small},
+    label style={font=\small},
+    every axis plot/.append style={line width=1.2pt, mark size=2.5pt},
+]
+
+% SAM (Semantically-Aware Monitor) — tighter ROC curve
+% Each point corresponds to a different threshold tau
+\addplot[color=tealaccent, mark=*, mark options={fill=tealaccent}]
+    coordinates {
+        (0.2, 72)    % tau=3.0 (very strict on FP, misses some TP)
+        (0.4, 85)    % tau=2.5
+        (0.5, 91)    % tau=2.0
+        (0.7, 95)    % tau=1.5
+        (0.9, 97)    % tau=1.0
+        (1.5, 99)    % tau=0.5
+        (2.8, 100)   % tau=0.25
+        (4.5, 100)   % tau=0.1
+    };
+\addlegendentry{SAM (Ours)}
+
+% PGM (Pure Geometric Monitor) — worse ROC curve
+\addplot[color=terracotta, mark=triangle*, mark options={fill=terracotta}]
+    coordinates {
+        (1.2, 65)    % tau=3.0
+        (3.5, 78)    % tau=2.5
+        (6.0, 85)    % tau=2.0
+        (9.5, 90)    % tau=1.5
+        (14.0, 95)   % tau=1.0
+        (21.0, 98)   % tau=0.5
+        (27.0, 99)   % tau=0.25
+    };
+\addlegendentry{PGM (Baseline)}
+
+% 1% FPR target line
+\draw[dashed, gray, line width=0.6pt] (axis cs:1.0,50) -- (axis cs:1.0,102);
+\node[font=\tiny, text=gray, rotate=90, anchor=south] at (axis cs:1.3,60) {1\% FPR target};
+
+% Annotations for selected thresholds
+\node[font=\tiny, text=tealaccent, anchor=south west] at (axis cs:0.9,97) {$\tau{=}1.0$};
+\node[font=\tiny, text=terracotta, anchor=south west] at (axis cs:14.0,95) {$\tau{=}1.0$};
+
+\end{axis}
+\end{tikzpicture}

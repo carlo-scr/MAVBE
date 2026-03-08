@@ -1,0 +1,76 @@
+% Scenario Overview Diagrams
+\begin{tikzpicture}[
+    node distance=0.5cm,
+    font=\small,
+]
+
+% ============================================================
+% SCENARIO 1: THE GHOST
+% ============================================================
+\begin{scope}[shift={(0,0)}]
+    % Road
+    \fill[gray!15] (-0.3,-1.2) rectangle (5.3,1.2);
+    \draw[gray!50, dashed, line width=0.5pt] (-0.3,0) -- (5.3,0);
+    \draw[gray!60, line width=1pt] (-0.3,-1.2) -- (5.3,-1.2);
+    \draw[gray!60, line width=1pt] (-0.3,1.2) -- (5.3,1.2);
+
+    % Ego vehicle
+    \node[draw=darkteal, fill=darkteal!20, rounded corners=2pt, minimum width=0.6cm, minimum height=0.35cm, line width=0.8pt] (ego1) at (0.8,-0.5) {};
+    \node[font=\tiny, text=darkteal, below=1pt of ego1] {Ego};
+    \draw[-{Stealth[length=2mm]}, darkteal, line width=0.8pt] (1.15,-0.5) -- (1.8,-0.5);
+
+    % Pedestrian crossing
+    \node[draw=dangerzone, fill=dangerzone!20, circle, minimum size=0.35cm, line width=0.8pt] (ped1) at (3.0,0.8) {};
+    \draw[-{Stealth[length=1.5mm]}, dangerzone, line width=0.8pt] (3.0,0.6) -- (3.0,-0.1);
+    \node[font=\tiny, text=dangerzone] at (3.0,1.15) {Ped};
+
+    % Map view shows free space
+    \draw[tealaccent, line width=0.6pt, decorate, decoration={brace, amplitude=3pt, mirror}] (2.0,-1.45) -- (4.5,-1.45);
+    \node[font=\tiny, text=tealaccent] at (3.25,-1.85) {Map: Free Space};
+
+    % Red X for discrepancy
+    \node[font=\normalsize, text=dangerzone] at (3.0,0.15) {$\boldsymbol{\times}$};
+
+    % Title
+    \node[font=\small\bfseries, text=darkteal] at (2.5,2.0) {Scenario 1: ``The Ghost''};
+\end{scope}
+
+% ============================================================
+% SCENARIO 2: THE BLIND MAP
+% ============================================================
+\begin{scope}[shift={(6.5,0)}]
+    % Road
+    \fill[gray!15] (-0.3,-1.2) rectangle (5.3,1.2);
+    \draw[gray!50, dashed, line width=0.5pt] (-0.3,0) -- (5.3,0);
+    \draw[gray!60, line width=1pt] (-0.3,-1.2) -- (5.3,-1.2);
+    \draw[gray!60, line width=1pt] (-0.3,1.2) -- (5.3,1.2);
+
+    % Ego vehicle
+    \node[draw=darkteal, fill=darkteal!20, rounded corners=2pt, minimum width=0.6cm, minimum height=0.35cm, line width=0.8pt] (ego2) at (0.8,-0.5) {};
+    \node[font=\tiny, text=darkteal, below=1pt of ego2] {Ego};
+    \draw[-{Stealth[length=2mm]}, darkteal, line width=0.8pt] (1.15,-0.5) -- (1.8,-0.5);
+
+    % Static obstacle (barrier)
+    \fill[mauvecol!30] (3.2,-0.8) rectangle (3.6,0.4);
+    \draw[mauvecol, line width=1pt] (3.2,-0.8) rectangle (3.6,0.4);
+    \node[font=\tiny, text=mauvecol, rotate=90] at (3.4,-0.2) {Barrier};
+
+    % Stop sign
+    \node[draw=dangerzone, fill=dangerzone!15, regular polygon, regular polygon sides=8, minimum size=0.4cm, line width=0.8pt] (stop) at (4.5,0.8) {};
+    \node[font=\tiny, text=white] at (4.5,0.8) {\textbf{S}};
+    \node[font=\tiny, text=dangerzone] at (4.5,1.2) {Stop};
+
+    % Ghost artifact in map
+    \fill[goldcol!50, opacity=0.5] (1.8,0.1) ellipse (0.4 and 0.3);
+    \draw[goldcol, dashed, line width=0.6pt] (1.8,0.1) ellipse (0.4 and 0.3);
+    \node[font=\tiny, text=goldcol!80!black] at (1.8,0.6) {Phantom};
+
+    % Map shows neither barrier nor accurate stop sign
+    \draw[dangerzone, line width=0.6pt, decorate, decoration={brace, amplitude=3pt, mirror}] (3.0,-1.45) -- (4.8,-1.45);
+    \node[font=\tiny, text=dangerzone] at (3.9,-1.85) {Map: Unconverged};
+
+    % Title
+    \node[font=\small\bfseries, text=darkteal] at (2.5,2.0) {Scenario 2: ``The Blind Map''};
+\end{scope}
+
+\end{tikzpicture}

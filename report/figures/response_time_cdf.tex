@@ -1,0 +1,78 @@
+% CDF of Safety Response Times
+% Placeholder data — replace with experimental results
+\begin{tikzpicture}
+\begin{axis}[
+    width=\columnwidth,
+    height=5.5cm,
+    xlabel={Response Time (ms)},
+    ylabel={Cumulative Probability},
+    xmin=0, xmax=200,
+    ymin=0, ymax=1.05,
+    grid=major,
+    grid style={gray!20},
+    legend style={
+        at={(0.98,0.45)},
+        anchor=east,
+        font=\small,
+        draw=gray!50,
+        fill=white,
+        fill opacity=0.9,
+    },
+    tick label style={font=\small},
+    label style={font=\small},
+    every axis plot/.append style={line width=1.4pt},
+    ytick={0, 0.2, 0.4, 0.6, 0.8, 1.0},
+]
+
+% SAM CDF — faster response overall
+\addplot[color=tealaccent, smooth]
+    coordinates {
+        (0, 0)
+        (10, 0.05)
+        (20, 0.15)
+        (30, 0.30)
+        (40, 0.50)
+        (50, 0.68)
+        (60, 0.80)
+        (70, 0.88)
+        (80, 0.93)
+        (90, 0.96)
+        (100, 0.98)
+        (120, 0.99)
+        (150, 1.0)
+    };
+\addlegendentry{SAM (Ours)}
+
+% PGM CDF — similar median but heavier tail
+\addplot[color=terracotta, smooth, dashed]
+    coordinates {
+        (0, 0)
+        (10, 0.03)
+        (20, 0.10)
+        (30, 0.22)
+        (40, 0.38)
+        (50, 0.55)
+        (60, 0.68)
+        (70, 0.77)
+        (80, 0.84)
+        (90, 0.89)
+        (100, 0.92)
+        (120, 0.95)
+        (150, 0.97)
+        (180, 0.99)
+        (200, 1.0)
+    };
+\addlegendentry{PGM (Baseline)}
+
+% 100ms target line
+\draw[dashed, gray!70, line width=0.8pt] (axis cs:100,0) -- (axis cs:100,1.05);
+\node[font=\scriptsize, text=gray, rotate=90, anchor=south] at (axis cs:108,0.10) {100\,ms target};
+
+% Median annotations
+\draw[dotted, tealaccent, line width=0.6pt] (axis cs:0,0.5) -- (axis cs:40,0.5) -- (axis cs:40,0);
+\draw[dotted, terracotta, line width=0.6pt] (axis cs:0,0.5) -- (axis cs:50,0.5);
+\node[font=\tiny, text=tealaccent] at (axis cs:40,-0.08) {40};
+\node[font=\tiny, text=terracotta] at (axis cs:55,-0.08) {50};
+
+\end{axis}
+\end{tikzpicture}

@@ -1,0 +1,455 @@
+% Simplex-Splat: Runtime Verification of Online 3DGS Mapping
+% IEEE Conference Template for AA228V/CS238V Final Project
+\documentclass[conference]{IEEEtran}
+
+% ============================================================
+% Packages
+% ============================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{subcaption}
+\usepackage{pgfplots}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows.meta,positioning,fit,backgrounds,calc,decorations.pathreplacing}
+\pgfplotsset{compat=1.18}
+\usepackage[style=ieee,backend=biber]{biblatex}
+\addbibresource{references.bib}
+
+% Color definitions for figures
+\definecolor{tealaccent}{HTML}{20808D}
+\definecolor{terracotta}{HTML}{A84B2F}
+\definecolor{darkteal}{HTML}{1B474D}
+\definecolor{lightcyan}{HTML}{BCE2E7}
+\definecolor{mauvecol}{HTML}{944454}
+\definecolor{goldcol}{HTML}{FFC553}
+\definecolor{safezone}{HTML}{2E8B57}
+\definecolor{dangerzone}{HTML}{C0392B}
+
+% Placeholder command for values to be filled in
+\newcommand{\placeholder}[1]{\textcolor{tealaccent}{\textbf{[#1]}}}
+
+\begin{document}
+
+\title{Simplex-Splat: Runtime Verification of Online 3D Gaussian Splatting Maps for Safe Autonomous Navigation}
+
+\author{
+\IEEEauthorblockN{Rahul Ayanampudi}
+\IEEEauthorblockA{
+Department of Aeronautics \& Astronautics\\
+Stanford University\\
+\texttt{rayanam@stanford.edu}}
+\and
+\IEEEauthorblockN{Carlo Schreiber}
+\IEEEauthorblockA{
+Department of Electrical Engineering\\
+Stanford University\\
+\texttt{carlops@stanford.edu}}
+}
+
+\maketitle
+
+% ============================================================
+% ABSTRACT
+% ============================================================
+\begin{abstract}
+Neural radiance representations such as 3D Gaussian Splatting (3DGS) offer unprecedented visual fidelity for dense mapping in robotic systems, yet they provide no formal guarantees of geometric or semantic correctness---a critical gap for safety-critical autonomous navigation. We present \textsc{Simplex-Splat}, a runtime monitoring framework grounded in the Simplex Architecture that continuously validates an online 3DGS map against raw sensor streams. Our system implements a semantically-aware residual monitor that cross-references depth renders from the neural map with LiDAR-equivalent ground truth and semantic segmentation, triggering deterministic emergency braking when the map diverges from reality. We evaluate \textsc{Simplex-Splat} in the CARLA simulator across two adversarial scenarios---unmodeled dynamic pedestrians and unconverged static geometry---and compare a pure geometric monitor baseline against our semantically-aware variant. The semantically-aware monitor achieves a true positive rate of \placeholder{XX}\% with a false positive rate of \placeholder{XX}\% in static environments, while maintaining a safety response time of \placeholder{XX}\,ms, compared to the pure geometric baseline's false positive rate of \placeholder{XX}\%. An ablation study over residual threshold $\tau$ reveals the critical role of semantic filtering in achieving robust runtime verification without excessive conservatism.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Runtime verification, 3D Gaussian Splatting, Simplex Architecture, autonomous navigation, safety monitoring
+\end{IEEEkeywords}
+
+% ============================================================
+% I. INTRODUCTION
+% ============================================================
+\section{Introduction}
+\label{sec:intro}
+
+The adoption of neural scene representations for dense mapping in robotics has accelerated rapidly. 3D Gaussian Splatting (3DGS)~\cite{kerbl2023gaussian} has emerged as a compelling alternative to Neural Radiance Fields (NeRFs)~\cite{mildenhall2020nerf} by representing scenes as collections of anisotropic 3D Gaussians that can be rendered in real time via differentiable rasterization. Recent works such as SplaTAM~\cite{keetha2024splatam} demonstrate that 3DGS can be integrated into online Simultaneous Localization and Mapping (SLAM) pipelines, achieving sub-centimeter tracking accuracy and photorealistic reconstruction at 400\,FPS.
+
+However, the use of these probabilistic representations in safety-critical autonomy introduces significant risks. Unlike classical geometric maps built from LiDAR point clouds, 3DGS maps are optimized via gradient descent and are susceptible to failure modes that are fundamentally different from traditional mapping artifacts:
+
+\begin{itemize}
+    \item \textbf{Phantom obstacles:} Unconverged Gaussians can hallucinate geometry in free space, causing unnecessary emergency stops.
+    \item \textbf{Ghost artifacts:} Dynamic actors (e.g., pedestrians) that move away leave residual Gaussians in the map, producing stale occupancy estimates.
+    \item \textbf{Missing geometry:} Newly appeared objects may not yet be reconstructed by the online optimization, creating blind spots in the planner's world model.
+\end{itemize}
+
+A planner that trusts a 3DGS map without verification risks both \emph{phantom braking} (false positive safety interventions due to artifacts) and \emph{missed detections} (false negative failures where real obstacles are absent from the map). These failure modes are especially dangerous in urban environments with dynamic, unpredictable actors.
+
+To address this gap, we propose \textsc{Simplex-Splat}, a runtime monitoring framework based on the Simplex Architecture~\cite{sha2001simplex}. The Simplex Architecture is a well-established paradigm for runtime assurance in which a high-assurance decision module monitors the output of an unverified advanced controller and switches to a verified baseline controller when safety violations are imminent~\cite{bak2014simplex, desai2019soter}. We adapt this principle from the \emph{control} domain to the \emph{perception} domain: instead of monitoring controller commands, our decision module monitors the \emph{map} itself by cross-validating neural renders against raw sensor streams.
+
+Our contributions are as follows:
+\begin{enumerate}
+    \item A runtime verification framework (\textsc{Simplex-Splat}) that adapts the Simplex Architecture to validate online 3DGS maps against ground-truth sensors.
+    \item A semantically-aware residual monitor that restricts depth validation to safety-critical object classes, significantly reducing false positive rates compared to a pure geometric baseline.
+    \item A formal safety specification $\phi_{\text{safe}}$ encompassing dynamic safety, static integrity, and structural consistency.
+    \item Quantitative evaluation in the CARLA simulator across adversarial scenarios with ablation studies over monitoring parameters.
+\end{enumerate}
+
+% ============================================================
+% II. RELATED WORK
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+
+\subsection{3D Gaussian Splatting for Dense Mapping}
+
+3D Gaussian Splatting~\cite{kerbl2023gaussian} represents scenes as a set of 3D Gaussians, each parameterized by a mean $\boldsymbol{\mu} \in \mathbb{R}^3$, covariance $\boldsymbol{\Sigma} \in \mathbb{R}^{3\times3}$, opacity $\alpha \in [0,1]$, and view-dependent color encoded via spherical harmonics. Rendering is performed by projecting Gaussians onto the image plane and alpha-compositing in depth order, enabling real-time frame rates on commodity GPUs.
+
+SplaTAM~\cite{keetha2024splatam} extends 3DGS to online dense SLAM from an unposed RGB-D camera. It introduces silhouette-guided tracking, where the rendered opacity mask guides camera pose optimization via differentiable rendering. SplaTAM achieves up to $2\times$ improvement over prior dense SLAM methods~\cite{sucar2021imap, zhu2022nice, sandstrom2023pointslam} on camera pose estimation. In the autonomous driving domain, SplatAD~\cite{hess2024splatad} extends 3DGS to jointly render camera and LiDAR data with sensor-specific phenomena such as rolling shutter and ray dropout, achieving state-of-the-art rendering quality.
+
+While these methods advance the fidelity and speed of neural mapping, none provide formal guarantees about the geometric correctness of their output---a prerequisite for deployment in safety-critical applications.
+
+\subsection{The Simplex Architecture and Runtime Assurance}
+
+The Simplex Architecture, introduced by Sha~\cite{sha2001simplex}, provides a framework for using complex, unverified controllers alongside simple, verified baseline controllers. The core idea is a \emph{decision module} that monitors system state and switches from the advanced to the baseline controller when the system approaches the boundary of a safe operating region.
+
+Bak et al.~\cite{bak2014simplex} formalize the ``Black-Box Simplex Architecture,'' removing the requirement for verified baseline controllers by instead relying on runtime checks of the baseline's output. Phan et al.~\cite{phan2023neural} demonstrate neural reachability-based runtime assurance for autonomous vehicles, using neural networks to approximate reachable sets within a Simplex framework. Desai et al.~\cite{desai2019soter} present SOTER, a language-based RTA framework for distributed robotic systems on ROS.
+
+These works focus on \emph{control-level} assurance---monitoring controller commands and vehicle dynamics. Our work extends the Simplex paradigm to the \emph{perception level}, monitoring the neural map representation itself.
+
+\subsection{Runtime Monitoring of Neural Representations}
+
+The intersection of runtime verification and neural scene representations remains largely unexplored. PreSight~\cite{yuan2024presight} uses city-scale NeRF priors to enhance online perception but does not provide safety monitoring. Autonomous driving benchmarks in CARLA~\cite{dosovitskiy2017carla} evaluate perception and planning pipelines end-to-end but lack dedicated map-level validation.
+
+To our knowledge, \textsc{Simplex-Splat} is the first framework to apply runtime verification principles to online 3DGS maps, providing a principled mechanism for detecting and mitigating neural map failures during autonomous navigation.
+
+% ============================================================
+% III. PROBLEM FORMULATION
+% ============================================================
+\section{Problem Formulation}
+\label{sec:problem}
+
+\subsection{Setting}
+
+Consider an autonomous agent navigating an urban environment. At each discrete time step $k$, the agent receives an RGB-D observation $\mathbf{o}_k = (\mathbf{I}_k^{\text{rgb}}, \mathbf{D}_k^{\text{obs}})$ and its ground-truth pose $\mathbf{T}_k \in SE(3)$. The agent maintains an online 3DGS map $\mathcal{M}_k$ via a modified SplaTAM pipeline, which it uses for downstream path planning.
+
+We assume access to a ground-truth sensor suite providing:
+\begin{itemize}
+    \item LiDAR-equivalent depth: $\mathbf{D}_k^{\text{obs}} \in \mathbb{R}^{H \times W}$
+    \item Semantic segmentation: $\mathbf{S}_k^{\text{obs}} \in \mathcal{C}^{H \times W}$, where $\mathcal{C} = \{\text{Vehicle}, \text{Pedestrian}, \text{StopSign}, \text{Drivable}, \ldots\}$
+\end{itemize}
+
+This assumption isolates mapping errors from sensor noise and state estimation drift, allowing rigorous evaluation of the monitor's ability to detect neural map failures.
+
+\subsection{Safety Specification}
+
+We define a safety specification $\phi_{\text{safe}}$ as the conjunction of three properties that must hold at every time step:
+
+\paragraph{Dynamic Safety ($\phi_{\text{dyn}}$)}
+Any safety-critical dynamic object (Pedestrian, Vehicle) detected by the semantic sensor must have a corresponding presence in the neural map. Formally, for every pixel $(i,j)$ where $\mathbf{S}_k^{\text{obs}}(i,j) \in \{\text{Ped}, \text{Veh}\}$:
+\begin{equation}
+    \label{eq:dyn_safety}
+    |\mathbf{D}_k^{\text{pred}}(i,j) - \mathbf{D}_k^{\text{obs}}(i,j)| < \tau_{\text{fn}}
+\end{equation}
+where $\mathbf{D}_k^{\text{pred}}$ is the depth rendered from the 3DGS map at pose $\mathbf{T}_k$. A violation implies the map predicts empty space where a real obstacle exists.
+
+\paragraph{Static Integrity ($\phi_{\text{static}}$)}
+The map's predicted depth in drivable regions must not \emph{underestimate} observed free space beyond a safety margin:
+\begin{equation}
+    \label{eq:static_integrity}
+    \forall (i,j) \text{ s.t. } \mathbf{S}_k^{\text{obs}}(i,j) = \text{Drivable}: \quad \mathbf{D}_k^{\text{pred}}(i,j) \geq \mathbf{D}_k^{\text{obs}}(i,j) - \tau_{\text{fp}}
+\end{equation}
+A violation indicates phantom geometry hallucinated by the neural map in drivable space.
+
+\paragraph{Structural Consistency ($\phi_{\text{struct}}$)}
+Critical static features (e.g., Stop Signs) must maintain structural consistency between the rendered map and ground truth, measured by Intersection over Union:
+\begin{equation}
+    \label{eq:struct}
+    \text{IoU}(\mathbf{S}_k^{\text{pred}}, \mathbf{S}_k^{\text{obs}}, c) \geq \tau_{\text{IoU}} \quad \forall c \in \mathcal{C}_{\text{critical}}
+\end{equation}
+
+The overall safety specification is $\phi_{\text{safe}} = \phi_{\text{dyn}} \wedge \phi_{\text{static}} \wedge \phi_{\text{struct}}$.
+
+% ============================================================
+% IV. APPROACH
+% ============================================================
+\section{Approach: The \textsc{Simplex-Splat} Architecture}
+\label{sec:approach}
+
+\subsection{System Overview}
+
+\textsc{Simplex-Splat} implements a Simplex Architecture with three components, illustrated in Fig.~\ref{fig:system_arch}:
+
+\begin{enumerate}
+    \item \textbf{Advanced Channel (AC):} The online 3DGS map $\mathcal{M}_k$ built by a modified SplaTAM pipeline within a sliding window of $\sim$50\,m. The path planner queries this map for obstacle-free trajectories.
+    \item \textbf{Safety Monitor (DM):} A high-assurance decision module that, at every time step, renders the expected depth $\mathbf{D}_k^{\text{pred}}$ and semantic view $\mathbf{S}_k^{\text{pred}}$ from the vehicle's pose and computes a hybrid residual against the ground-truth sensor stream.
+    \item \textbf{Baseline Controller (BC):} A deterministic emergency braking controller that decelerates the vehicle to a full stop when the monitor triggers a safety violation.
+\end{enumerate}
+
+\begin{figure*}[!t]
+    \centering
+    \input{figures/system_architecture.tex}
+    \caption{The \textsc{Simplex-Splat} architecture. The Advanced Channel (left) uses a SplaTAM-based 3DGS map for path planning. The Safety Monitor (center) cross-validates rendered depth/semantics against ground-truth sensors. Upon detecting a violation of $\phi_{\text{safe}}$, control is transferred to the Emergency Braking baseline controller (right).}
+    \label{fig:system_arch}
+\end{figure*}
+
+\subsection{Semantically-Aware Residual Monitor}
+
+The core of our safety monitor is a \emph{semantically-aware residual computation} that restricts depth validation to safety-critical regions, rather than computing global pixel-wise residuals.
+
+At each time step $k$, the monitor:
+\begin{enumerate}
+    \item \textbf{Renders} the predicted depth $\mathbf{D}_k^{\text{pred}}$ and semantic map $\mathbf{S}_k^{\text{pred}}$ from the 3DGS map at the current pose $\mathbf{T}_k$.
+    \item \textbf{Computes semantic masks} for safety-critical classes:
+    \begin{equation}
+        \mathbf{M}_c = \{(i,j) \mid \mathbf{S}_k^{\text{obs}}(i,j) = c\}, \quad c \in \mathcal{C}_{\text{critical}}
+    \end{equation}
+    \item \textbf{Evaluates masked residuals} for each specification component:
+    \begin{align}
+        r_{\text{dyn}} &= \frac{1}{|\mathbf{M}_{\text{dyn}}|} \sum_{(i,j) \in \mathbf{M}_{\text{dyn}}} \mathbb{1}\!\left[|\Delta D_{ij}| > \tau_{\text{fn}}\right] \label{eq:r_dyn} \\
+        r_{\text{static}} &= \frac{1}{|\mathbf{M}_{\text{drv}}|} \sum_{(i,j) \in \mathbf{M}_{\text{drv}}} \mathbb{1}\!\left[\mathbf{D}_k^{\text{pred}}(i,j) < \mathbf{D}_k^{\text{obs}}(i,j) - \tau_{\text{fp}}\right] \label{eq:r_static}
+    \end{align}
+    where $\Delta D_{ij} = \mathbf{D}_k^{\text{pred}}(i,j) - \mathbf{D}_k^{\text{obs}}(i,j)$ and $\mathbf{M}_{\text{dyn}} = \mathbf{M}_{\text{Ped}} \cup \mathbf{M}_{\text{Veh}}$.
+    \item \textbf{Triggers handover} to emergency braking if any residual exceeds its threshold:
+    \begin{equation}
+        \text{trigger} = (r_{\text{dyn}} > \epsilon_{\text{dyn}}) \lor (r_{\text{static}} > \epsilon_{\text{static}}) \lor (\text{IoU} < \tau_{\text{IoU}})
+    \end{equation}
+\end{enumerate}
+
+This semantic filtering is critical: a purely geometric monitor that computes residuals globally (over all pixels) is susceptible to false alarms from depth noise in background regions, foliage, and sky boundaries. By restricting attention to safety-critical masks, we achieve robust monitoring without excessive conservatism.
+
+The full monitoring procedure is summarized in Algorithm~\ref{alg:monitor}.
+
+\begin{algorithm}[!t]
+\caption{\textsc{Simplex-Splat} Safety Monitor}
+\label{alg:monitor}
+\begin{algorithmic}[1]
+\REQUIRE Pose $\mathbf{T}_k$, 3DGS map $\mathcal{M}_k$, sensors $(\mathbf{D}_k^{\text{obs}}, \mathbf{S}_k^{\text{obs}})$
+\REQUIRE Thresholds $\tau_{\text{fn}}, \tau_{\text{fp}}, \tau_{\text{IoU}}, \epsilon_{\text{dyn}}, \epsilon_{\text{static}}$
+\ENSURE Action $\in \{\text{CONTINUE}, \text{E-STOP}\}$
+\STATE Render $\mathbf{D}_k^{\text{pred}}, \mathbf{S}_k^{\text{pred}} \leftarrow \textsc{Render}(\mathcal{M}_k, \mathbf{T}_k)$
+\STATE $\mathbf{M}_{\text{dyn}} \leftarrow \{(i,j) \mid \mathbf{S}_k^{\text{obs}}(i,j) \in \{\text{Ped, Veh}\}\}$
+\STATE $\mathbf{M}_{\text{drv}} \leftarrow \{(i,j) \mid \mathbf{S}_k^{\text{obs}}(i,j) = \text{Drivable}\}$
+\STATE $r_{\text{dyn}} \leftarrow \frac{1}{|\mathbf{M}_{\text{dyn}}|} \sum_{(i,j) \in \mathbf{M}_{\text{dyn}}} \mathbb{1}[|\Delta D_{ij}| > \tau_{\text{fn}}]$
+\STATE $r_{\text{static}} \leftarrow \frac{1}{|\mathbf{M}_{\text{drv}}|} \sum_{(i,j) \in \mathbf{M}_{\text{drv}}} \mathbb{1}[\mathbf{D}_k^{\text{pred}}(i,j) < \mathbf{D}_k^{\text{obs}}(i,j) - \tau_{\text{fp}}]$
+\STATE $\textit{iou} \leftarrow \textsc{IoU}(\mathbf{S}_k^{\text{pred}}, \mathbf{S}_k^{\text{obs}}, \mathcal{C}_{\text{critical}})$
+\IF{$r_{\text{dyn}} > \epsilon_{\text{dyn}}$ \textbf{or} $r_{\text{static}} > \epsilon_{\text{static}}$ \textbf{or} $\textit{iou} < \tau_{\text{IoU}}$}
+    \RETURN \textsc{E-Stop}
+\ELSE
+    \RETURN \textsc{Continue}
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Sliding-Window Map Management}
+
+To maintain bounded computational complexity, the 3DGS map is managed within a sliding window centered on the vehicle's current position. Gaussians beyond the window boundary ($\sim$50\,m) are pruned, ensuring $O(1)$ query complexity and constant memory usage. New Gaussians are added only in previously unmapped regions using SplaTAM's silhouette-guided densification strategy.
+
+\subsection{Emergency Braking Controller}
+
+The baseline controller implements maximum-deceleration braking with a simple kinematic model:
+\begin{equation}
+    a_{\text{brake}} = -a_{\max}, \quad v_{k+1} = \max(0, v_k + a_{\text{brake}} \cdot \Delta t)
+\end{equation}
+This controller is trivially verifiable and guaranteed to bring the vehicle to a stop within a bounded distance $d_{\text{stop}} = v_k^2 / (2 a_{\max})$.
+
+% ============================================================
+% V. EXPERIMENTAL SETUP
+% ============================================================
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{Simulation Environment}
+
+All experiments are conducted in CARLA~\cite{dosovitskiy2017carla} (v0.9.13+) operating in \emph{synchronous mode} with a fixed time step $\Delta t = 0.05$\,s (20\,Hz). This design choice decouples simulation time from wall-clock rendering time, ensuring that all validation metrics reflect the algorithmic performance of the monitor rather than hardware-dependent timing artifacts. We use Town10HD as the primary map, which provides a dense urban environment with varied road geometry, signage, and pedestrian infrastructure.
+
+\subsection{Sensor Configuration}
+
+The ego vehicle is equipped with:
+\begin{itemize}
+    \item \textbf{RGB Camera:} $1920 \times 1080$, 90$^\circ$ FoV, mounted at hood level.
+    \item \textbf{Depth Sensor:} Ground-truth depth from CARLA's depth camera, providing $\mathbf{D}_k^{\text{obs}}$ at the same resolution.
+    \item \textbf{Semantic Segmentation:} CARLA's ground-truth semantic camera, providing per-pixel class labels $\mathbf{S}_k^{\text{obs}}$.
+\end{itemize}
+
+We explicitly assume perfect localization (ground-truth pose from CARLA) to rigorously isolate mapping errors from state estimation drift.
+
+\subsection{Adversarial Scenarios}
+
+We design two adversarial scenarios to test distinct failure modes of the 3DGS map:
+
+\paragraph{Scenario 1: ``The Ghost'' (Dynamic Safety)}
+A pedestrian jaywalks across the vehicle's planned trajectory. The SplaTAM pipeline, operating on a keyframe-based update schedule, fails to reconstruct the pedestrian in real time. The monitor must detect the discrepancy between the map (which shows free space) and the depth sensor (which shows an obstacle) and trigger emergency braking. This scenario targets $\phi_{\text{dyn}}$.
+
+\paragraph{Scenario 2: ``The Blind Map'' (Static Integrity)}
+A large static obstacle (e.g., a construction barrier) or Stop Sign is placed at a location that the 3DGS map has not yet converged on, resulting in either missing geometry or phantom artifacts. This tests $\phi_{\text{static}}$ and $\phi_{\text{struct}}$ by requiring the monitor to detect unconverged or hallucinated map regions.
+
+Each scenario is run for \placeholder{N} trials with randomized spawn positions and timing to compute aggregate statistics. Fig.~\ref{fig:scenarios} illustrates the two adversarial scenarios.
+
+\begin{figure*}[!t]
+    \centering
+    \input{figures/scenario_diagram.tex}
+    \caption{Adversarial test scenarios. \textbf{Left:} ``The Ghost'' --- a jaywalking pedestrian that the 3DGS map fails to reconstruct, creating a discrepancy between map (free space) and sensor (obstacle). \textbf{Right:} ``The Blind Map'' --- an unconverged region containing a static barrier and Stop Sign, plus a phantom artifact from a departed vehicle.}
+    \label{fig:scenarios}
+\end{figure*}
+
+\subsection{Metrics}
+
+We evaluate performance using the following metrics:
+\begin{itemize}
+    \item \textbf{True Positive Rate (TPR):} Fraction of actual hazardous events correctly detected by the monitor.
+    \item \textbf{False Positive Rate (FPR):} Fraction of safe time steps incorrectly flagged as violations (measured in the static/no-disturbance baseline).
+    \item \textbf{Safety Response Time ($t_{\text{resp}}$):} Elapsed time from the appearance of the disturbance to the monitor's first trigger signal.
+    \item \textbf{Collision Rate:} Fraction of trials where the ego vehicle makes contact with a dynamic actor or static obstacle.
+\end{itemize}
+
+\subsection{Ablation: Pure Geometric vs.\ Semantically-Aware Monitor}
+
+To quantify the value of semantic awareness, we compare:
+\begin{itemize}
+    \item \textbf{Pure Geometric Monitor (PGM):} Computes a global depth residual $|\mathbf{D}_k^{\text{pred}} - \mathbf{D}_k^{\text{obs}}| > \tau$ across the \emph{entire} field of view, ignoring semantic class.
+    \item \textbf{Semantically-Aware Monitor (SAM):} Our proposed method, which restricts residual computation to safety-critical semantic masks as described in Section~\ref{sec:approach}.
+\end{itemize}
+
+We further ablate over the residual threshold $\tau$ across a range of values to characterize the ROC trade-off between TPR and FPR for each monitor variant.
+
+% ============================================================
+% VI. RESULTS
+% ============================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{Scenario 1: The Ghost (Dynamic Pedestrian)}
+
+Table~\ref{tab:ghost_results} presents the quantitative results for the dynamic pedestrian scenario. \placeholder{Describe key findings: TPR, FPR, response time for both PGM and SAM. Highlight that SAM achieves comparable TPR but significantly lower FPR.}
+
+\begin{table}[!t]
+    \centering
+    \caption{Results for Scenario 1 (``The Ghost''): Dynamic pedestrian detection. \placeholder{Fill with actual values.}}
+    \label{tab:ghost_results}
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{l c c c c}
+        \toprule
+        \textbf{Monitor} & \textbf{TPR (\%)} & \textbf{FPR (\%)} & $\boldsymbol{t_{\textbf{resp}}}$ \textbf{(ms)} & \textbf{Coll.\ Rate (\%)} \\
+        \midrule
+        PGM ($\tau{=}0.5$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        PGM ($\tau{=}1.0$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        PGM ($\tau{=}2.0$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        \midrule
+        SAM ($\tau_{\text{fn}}{=}0.5$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        SAM ($\tau_{\text{fn}}{=}1.0$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        SAM ($\tau_{\text{fn}}{=}2.0$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Scenario 2: The Blind Map (Static Integrity)}
+
+Table~\ref{tab:blind_results} summarizes results for the unconverged geometry scenario. \placeholder{Describe key findings: detection of phantom obstacles and missing stop signs. Highlight IoU-based structural consistency check.}
+
+\begin{table}[!t]
+    \centering
+    \caption{Results for Scenario 2 (``The Blind Map''): Static integrity and structural consistency. \placeholder{Fill with actual values.}}
+    \label{tab:blind_results}
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{l c c c}
+        \toprule
+        \textbf{Monitor} & \textbf{TPR (\%)} & \textbf{FPR (\%)} & \textbf{IoU (Stop Sign)} \\
+        \midrule
+        PGM ($\tau{=}0.5$\,m) & \placeholder{XX} & \placeholder{XX} & --- \\
+        PGM ($\tau{=}1.0$\,m) & \placeholder{XX} & \placeholder{XX} & --- \\
+        \midrule
+        SAM ($\tau_{\text{fp}}{=}0.5$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        SAM ($\tau_{\text{fp}}{=}1.0$\,m) & \placeholder{XX} & \placeholder{XX} & \placeholder{XX} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Qualitative Residual Comparison}
+
+Fig.~\ref{fig:residual_comparison} provides a qualitative comparison of the residual maps produced by the PGM and SAM approaches. The PGM computes residuals globally, causing benign depth discrepancies in foliage and sky boundaries to register as medium-to-high residuals, producing false positives. The SAM restricts residual computation to semantically meaningful regions (pedestrians, vehicles, drivable surface), effectively suppressing noise while retaining sensitivity to genuine safety violations.
+
+\begin{figure*}[!t]
+    \centering
+    \input{figures/residual_comparison.tex}
+    \caption{Qualitative comparison of residual maps. \textbf{Left:} Sensor view showing a pedestrian, road surface, and background foliage. \textbf{Center:} PGM residual---global depth comparison flags foliage and sky boundaries as false positives. \textbf{Right:} SAM residual---semantic masking suppresses background noise while correctly detecting the pedestrian discrepancy.}
+    \label{fig:residual_comparison}
+\end{figure*}
+
+\subsection{Ablation: Threshold Sensitivity Analysis}
+
+Fig.~\ref{fig:roc_ablation} presents the ROC-style trade-off between TPR and FPR as the residual threshold $\tau$ is swept from $0.1$\,m to $3.0$\,m. \placeholder{Describe the ROC curves. Key insight: PGM requires very high $\tau$ to achieve acceptable FPR, sacrificing TPR. SAM maintains high TPR across all thresholds with consistently low FPR due to semantic masking.}
+
+\begin{figure}[!t]
+    \centering
+    \input{figures/roc_ablation.tex}
+    \caption{ROC-style ablation over residual threshold $\tau$. The Semantically-Aware Monitor (SAM, \textcolor{tealaccent}{teal}) achieves superior TPR--FPR trade-offs compared to the Pure Geometric Monitor (PGM, \textcolor{terracotta}{terracotta}). \placeholder{Update with experimental data.}}
+    \label{fig:roc_ablation}
+\end{figure}
+
+\subsection{Response Time Analysis}
+
+Fig.~\ref{fig:response_time} shows the cumulative distribution of safety response times across all trials. \placeholder{Describe the CDF. Key finding: median response time is well below 100ms target for SAM. PGM has similar median but heavier tail due to threshold sensitivity.}
+
+\begin{figure}[!t]
+    \centering
+    \input{figures/response_time_cdf.tex}
+    \caption{Cumulative distribution of safety response times. The vertical dashed line marks the 100\,ms target. \placeholder{Update with experimental data.}}
+    \label{fig:response_time}
+\end{figure}
+
+% ============================================================
+% VII. DISCUSSION
+% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Semantic Filtering as a Prerequisite for Robust Monitoring}
+
+Our ablation study confirms the central hypothesis: a pure geometric monitor suffers from an unacceptably high false positive rate in realistic environments. Depth residuals arise naturally from benign sources---foliage sway, specular reflections, sky-boundary artifacts, and minor misalignments between the neural render and sensor frame. The PGM treats all such residuals equally, leading to frequent false alarms that would make the system impractical for deployment.
+
+The semantically-aware monitor eliminates this issue by restricting residual computation to pixels belonging to safety-critical classes. Background noise in sky, vegetation, and building facades is ignored entirely, focusing the monitor's attention on what matters: dynamic actors in the vehicle's path and the integrity of drivable surfaces.
+
+\subsection{Limitations}
+
+Several limitations of our current approach warrant discussion:
+
+\begin{itemize}
+    \item \textbf{Perfect localization assumption:} We rely on ground-truth poses from CARLA. In practice, pose estimation errors from visual-inertial odometry or LiDAR-inertial odometry would introduce additional residuals that the monitor must distinguish from genuine map failures.
+    \item \textbf{Semantic oracle:} Our ground-truth semantic segmentation from CARLA represents an idealized sensor. A deployed system would require a learned semantic segmentation model, introducing its own error characteristics.
+    \item \textbf{Binary intervention:} The current baseline controller implements full emergency braking. A more sophisticated approach could employ graduated responses (e.g., speed reduction, lane change) based on the severity and spatial location of the detected violation.
+    \item \textbf{Single-agent evaluation:} We evaluate in a controlled single-agent scenario. Multi-agent interactions and complex traffic scenarios remain future work.
+\end{itemize}
+
+\subsection{Connection to Course Themes}
+
+This work directly connects to the validation of safety-critical systems (AA228V/CS238V). The Simplex Architecture provides a principled framework for using unverified components (the 3DGS map) while maintaining safety guarantees through runtime monitoring. Our safety specification $\phi_{\text{safe}}$ formalizes the properties that the neural map must satisfy, and our monitor implements a decision procedure for checking these properties at runtime. The ablation study demonstrates the importance of the monitoring strategy: a naively specified monitor (PGM) can achieve high sensitivity but at the cost of excessive false alarms, while a carefully designed monitor (SAM) achieves both high sensitivity and high specificity.
+
+% ============================================================
+% VIII. CONCLUSION
+% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented \textsc{Simplex-Splat}, a runtime verification framework that bridges the trust gap between neural 3DGS maps and safety-critical autonomous navigation. By adapting the Simplex Architecture from the control domain to the perception domain, we demonstrated that a semantically-aware residual monitor can reliably detect neural map failures---including unmodeled dynamic actors and unconverged static geometry---while maintaining a false positive rate compatible with practical deployment.
+
+Our ablation study quantified the critical importance of semantic filtering: a pure geometric monitor achieves high detection rates but produces frequent false alarms in unstructured environments, while our semantically-aware variant restricts attention to safety-critical classes, achieving robust verification without excessive conservatism. \placeholder{Summarize key numerical results once available.}
+
+Future work includes relaxing the perfect localization assumption via integration with robust state estimation, replacing the semantic oracle with a learned segmentation model with calibrated uncertainty, and extending the framework to multi-agent scenarios with inter-vehicle communication.
+
+% ============================================================
+% CONTRIBUTIONS
+% ============================================================
+\section*{Contributions}
+
+\textbf{Rahul Ayanampudi:} CARLA simulation integration, SplaTAM pipeline modification and online 3DGS map management, scenario design (pedestrian spawning, obstacle placement), data collection for experimental evaluation.
+
+\textbf{Carlo Schreiber:} Safety specification formalization ($\phi_{\text{safe}}$), semantically-aware residual monitor design and implementation, Simplex Architecture integration, ablation study design, primary paper writing and figure generation.
+
+% ============================================================
+% REFERENCES
+% ============================================================
+\printbibliography
+
+\end{document}

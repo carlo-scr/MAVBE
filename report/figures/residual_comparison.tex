@@ -1,0 +1,111 @@
+% Residual Map Comparison: PGM vs SAM
+% This is a conceptual diagram illustrating the difference
+\begin{tikzpicture}[font=\small]
+
+% ---- Column 1: Sensor Input ----
+\begin{scope}[shift={(0,0)}]
+    % Camera frame placeholder
+    \draw[darkteal, line width=0.8pt, rounded corners=2pt] (0,0) rectangle (2.8,2.0);
+
+    % Road surface
+    \fill[gray!20] (0,0) rectangle (2.8,0.7);
+
+    % Pedestrian silhouette (small rectangle)
+    \fill[dangerzone!40] (1.1,0.7) rectangle (1.5,1.5);
+    \draw[dangerzone, line width=0.6pt] (1.1,0.7) rectangle (1.5,1.5);
+
+    % Sky / background
+    \fill[lightcyan!30] (0,1.6) rectangle (2.8,2.0);
+
+    % Foliage
+    \fill[safezone!20] (2.0,1.0) rectangle (2.8,1.6);
+
+    % Label
+    \node[font=\scriptsize\bfseries, text=darkteal] at (1.4,2.3) {Sensor View};
+    \node[font=\tiny, text=dangerzone] at (1.3,1.65) {Ped};
+    \node[font=\tiny, text=safezone!70!black] at (2.4,1.3) {Tree};
+    \node[font=\tiny, text=gray] at (1.4,0.35) {Road};
+\end{scope}
+
+% ---- Column 2: PGM Residual (global) ----
+\begin{scope}[shift={(3.5,0)}]
+    \draw[terracotta, line width=0.8pt, rounded corners=2pt] (0,0) rectangle (2.8,2.0);
+
+    % Global residual heatmap effect
+    % Low residual on road
+    \fill[safezone!15] (0,0) rectangle (2.8,0.7);
+
+    % High residual on pedestrian
+    \fill[dangerzone!60] (1.1,0.7) rectangle (1.5,1.5);
+
+    % Medium residual on foliage (noise!)
+    \fill[goldcol!50] (2.0,1.0) rectangle (2.8,1.6);
+
+    % Medium residual on sky boundary
+    \fill[goldcol!30] (0,1.6) rectangle (2.8,2.0);
+
+    % Some noise patches
+    \fill[goldcol!40] (0.2,0.8) rectangle (0.6,1.1);
+    \fill[goldcol!35] (1.7,1.4) rectangle (2.0,1.7);
+
+    % Label
+    \node[font=\scriptsize\bfseries, text=terracotta] at (1.4,2.3) {PGM Residual};
+
+    % False positive annotation
+    \draw[-{Stealth[length=1.5mm]}, terracotta, line width=0.5pt] (2.4,0.8) -- (2.4,1.0);
+    \node[font=\tiny, text=terracotta] at (2.4,0.65) {FP!};
+
+    \draw[-{Stealth[length=1.5mm]}, terracotta, line width=0.5pt] (0.4,0.65) -- (0.4,0.8);
+    \node[font=\tiny, text=terracotta] at (0.4,0.5) {FP!};
+\end{scope}
+
+% ---- Column 3: SAM Residual (masked) ----
+\begin{scope}[shift={(7.0,0)}]
+    \draw[tealaccent, line width=0.8pt, rounded corners=2pt] (0,0) rectangle (2.8,2.0);
+
+    % Everything outside mask is suppressed
+    \fill[gray!5] (0,0) rectangle (2.8,2.0);
+
+    % Only safety-critical masks are active
+    % Pedestrian region: high residual (true positive)
+    \fill[dangerzone!60] (1.1,0.7) rectangle (1.5,1.5);
+
+    % Drivable surface: low residual (correct)
+    \fill[safezone!20] (0,0) rectangle (2.8,0.7);
+
+    % Ignored regions shown as hatched/faded
+    \foreach \x in {0.0,0.15,...,2.8} {
+        \draw[gray!15, line width=0.3pt] (\x,1.6) -- (\x+0.1,2.0);
+    }
+    \foreach \x in {2.0,2.15,...,2.8} {
+        \draw[gray!15, line width=0.3pt] (\x,1.0) -- (\x+0.1,1.6);
+    }
+
+    % Label
+    \node[font=\scriptsize\bfseries, text=tealaccent] at (1.4,2.3) {SAM Residual (Ours)};
+
+    % True positive annotation
+    \draw[-{Stealth[length=1.5mm]}, safezone, line width=0.5pt] (1.3,1.55) -- (1.3,1.7);
+    \node[font=\tiny, text=safezone!70!black] at (1.3,1.85) {TP};
+
+    % Ignored annotation
+    \node[font=\tiny, text=gray] at (2.4,1.3) {\textit{Ignored}};
+\end{scope}
+
+% ---- Legend ----
+\begin{scope}[shift={(0,-0.7)}]
+    \fill[safezone!20] (0,0) rectangle (0.3,0.2);
+    \node[font=\tiny, anchor=west] at (0.4,0.1) {Low residual};
+
+    \fill[goldcol!45] (2.2,0) rectangle (2.5,0.2);
+    \node[font=\tiny, anchor=west] at (2.6,0.1) {Med.\ residual (noise)};
+
+    \fill[dangerzone!60] (5.4,0) rectangle (5.7,0.2);
+    \node[font=\tiny, anchor=west] at (5.8,0.1) {High residual (violation)};
+
+    \fill[gray!5] (8.0,0) rectangle (8.3,0.2);
+    \draw[gray!30, line width=0.3pt] (8.0,0) -- (8.3,0.2);
+    \node[font=\tiny, anchor=west] at (8.4,0.1) {Masked (ignored)};
+\end{scope}
+
+\end{tikzpicture}
