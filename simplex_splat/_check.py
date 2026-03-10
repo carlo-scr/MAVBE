@@ -1,0 +1,16 @@
+import math
+a, b = 5+39, 60+500-39
+print(f"Beta({a},{b})")
+print(f"MAP={((a-1)/(a+b-2)):.4f}")
+se = math.sqrt(0.078*0.922/500)
+print(f"MC_SE={se:.4f} CI=[{0.078-1.96*se:.4f},{0.078+1.96*se:.4f}]")
+print(f"IS_SE={0.012/5.2**0.5:.4f}")
+print(f"CE_SE={0.012/4.8**0.5:.4f}")
+print(f"SF_vs_CV={(1-7.8/16.4)*100:.1f}%")
+print(f"Simplex_vs_SF={(1-2.1/7.8)*100:.1f}%")
+print(f"ADE_red={(1-0.42/0.64)*100:.1f}%")
+print(f"Med_CV={(16.4+27.8)/2} Med_SF={(7.8+14.6)/2}")
+print(f"Fail_sum={68+22+10}%")
+print(f"Low_red={(1-3.1/8.2)*100:.1f}%")
+print(f"High_red={(1-24.3/41.2)*100:.1f}%")
+print(f"Med_red={(1-11.2/22.1)*100:.1f}%")

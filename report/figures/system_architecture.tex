@@ -1,80 +1,65 @@
-% Simplex-Splat System Architecture Diagram
+% System Architecture: Simplex-Track perception pipeline
+% CARLA Sensors → YOLOv9 → DeepSORT → Social Force EKF → TTC Monitor → Continue/E-Stop
 \begin{tikzpicture}[
-    node distance=1.2cm and 1.4cm,
-    block/.style={draw, rounded corners, minimum height=1.0cm, minimum width=2.4cm, text centered, font=\small, line width=0.8pt},
-    sensor/.style={block, fill=lightcyan, draw=darkteal},
-    advanced/.style={block, fill=lightcyan!40, draw=tealaccent},
-    monitor/.style={block, fill=goldcol!30, draw=terracotta, line width=1.2pt},
-    baseline/.style={block, fill=dangerzone!15, draw=dangerzone, line width=1.2pt},
-    arrow/.style={-{Stealth[length=2.5mm]}, line width=0.7pt},
-    dasharrow/.style={-{Stealth[length=2.5mm]}, dashed, line width=0.7pt, draw=gray},
-    label/.style={font=\scriptsize\itshape, text=gray},
-    grouplabel/.style={font=\small\bfseries, text=darkteal},
+    node distance=0.6cm and 0.45cm,
+    block/.style={rectangle, draw, fill=lightcyan!40, minimum height=0.7cm, minimum width=1.6cm, align=center, font=\scriptsize\sffamily, rounded corners=2pt, line width=0.5pt},
+    sensor/.style={block, fill=goldcol!30},
+    advanced/.style={block, fill=tealaccent!20},
+    monitor/.style={block, fill=mauvecol!20},
+    baseline/.style={block, fill=dangerzone!15},
+    output/.style={block, fill=safezone!20},
+    arrow/.style={-{Stealth[length=4pt]}, thick, color=darkteal},
+    dasharrow/.style={-{Stealth[length=4pt]}, thick, dashed, color=dangerzone},
+    label/.style={font=\tiny\sffamily\itshape, color=darkteal},
+    grouplabel/.style={font=\scriptsize\sffamily\bfseries, color=darkteal},
 ]
 
-% ---- Sensor Suite ----
-\node[sensor] (rgbd) {RGB-D Camera};
-\node[sensor, below=0.5cm of rgbd] (lidar) {Depth Sensor};
-\node[sensor, below=0.5cm of lidar] (semseg) {Semantic Seg.};
+% Row 1: Perception Pipeline (Advanced Channel)
+\node[sensor] (carla) {CARLA\\Simulator};
+\node[sensor, right=of carla] (rgb) {RGB\\Sensors};
+\node[advanced, right=of rgb] (yolo) {YOLOv9\\Detector};
+\node[advanced, right=of yolo] (deepsort) {DeepSORT\\Tracker};
+\node[advanced, right=of deepsort] (sfekf) {Social Force\\EKF};
 
-% Group box around sensors
+% Row 2: Decision Module
+\node[monitor, below=0.9cm of sfekf] (ttc) {TTC\\Monitor};
+\node[monitor, left=of ttc] (odd) {ODD\\Monitor};
+\node[monitor, left=of odd] (uq) {Uncertainty\\Quantifier};
+
+% Row 3: Output Controllers
+\node[output, below=0.9cm of odd] (cont) {Continue\\Navigation};
+\node[baseline, right=of cont] (estop) {Emergency\\Braking};
+
+% Arrows: perception pipeline
+\draw[arrow] (carla) -- (rgb);
+\draw[arrow] (rgb) -- (yolo);
+\draw[arrow] (yolo) -- (deepsort);
+\draw[arrow] (deepsort) -- (sfekf);
+
+% Arrows: to decision module
+\draw[arrow] (sfekf) -- (ttc);
+\draw[arrow] (sfekf) |- (uq);
+\draw[arrow] (deepsort) |- (odd);
+
+% Arrows: decision logic
+\draw[arrow] (uq) -- (odd);
+\draw[arrow] (odd) -- (ttc);
+
+% Arrows: outputs
+\draw[arrow, color=safezone] (ttc) -| node[label, near start, right] {$\rho(\varphi) \geq 0$} (cont);
+\draw[dasharrow] (ttc) -| node[label, near start, left] {$\rho(\varphi) < 0$} (estop);
+
+% Group boxes
 \begin{scope}[on background layer]
-    \node[draw=darkteal, dashed, rounded corners, inner sep=8pt, fit=(rgbd)(semseg), fill=lightcyan!15] (sensorbox) {};
+    \node[draw=tealaccent, dashed, fill=tealaccent!5, rounded corners=4pt,
+          fit=(yolo)(deepsort)(sfekf), inner sep=4pt,
+          label={[grouplabel, anchor=south]above:Advanced Channel (Perception)}] {};
+    \node[draw=mauvecol, dashed, fill=mauvecol!5, rounded corners=4pt,
+          fit=(uq)(odd)(ttc), inner sep=4pt,
+          label={[grouplabel, anchor=south]above:Decision Module}] {};
+    \node[draw=safezone, dashed, fill=safezone!5, rounded corners=4pt,
+          fit=(cont)(estop), inner sep=4pt,
+          label={[grouplabel, anchor=south]above:Actuation}] {};
 \end{scope}
-\node[grouplabel, above=2pt of sensorbox.north] {Ground-Truth Sensors};
-
-% ---- Advanced Channel ----
-\node[advanced, right=2.0cm of rgbd] (splatam) {SplaTAM Pipeline};
-\node[advanced, below=0.5cm of splatam] (gmap) {3DGS Map $\mathcal{M}_k$};
-\node[advanced, below=0.5cm of gmap] (planner) {Path Planner};
-
-\begin{scope}[on background layer]
-    \node[draw=tealaccent, dashed, rounded corners, inner sep=8pt, fit=(splatam)(planner), fill=lightcyan!8] (acbox) {};
-\end{scope}
-\node[grouplabel, above=2pt of acbox.north, text=tealaccent] {Advanced Channel};
-
-% ---- Safety Monitor ----
-\node[monitor, right=2.0cm of splatam] (render) {Render $\mathbf{D}^{\text{pred}}_k$, $\mathbf{S}^{\text{pred}}_k$};
-\node[monitor, below=0.5cm of render] (residual) {Residual $\Delta D$};
-\node[monitor, below=0.5cm of residual] (decision) {$\phi_{\text{safe}}$ Check};
-
-\begin{scope}[on background layer]
-    \node[draw=terracotta, dashed, rounded corners, inner sep=8pt, fit=(render)(decision), fill=goldcol!8] (dmbox) {};
-\end{scope}
-\node[grouplabel, above=2pt of dmbox.north, text=terracotta] {Safety Monitor (DM)};
-
-% ---- Baseline Controller ----
-\node[baseline, right=2.0cm of residual, align=center] (ebrake) {\textbf{Emergency}\\\textbf{Braking}};
-
-% ---- Vehicle ----
-\node[block, below=1.4cm of planner, minimum width=3.5cm, fill=darkteal!10, draw=darkteal] (vehicle) {Vehicle Actuators};
-
-% ---- Arrows: Sensor to Advanced Channel ----
-\draw[arrow] (rgbd.east) -- (splatam.west) node[label, midway, above] {RGB-D};
-\draw[arrow] (splatam) -- (gmap);
-\draw[arrow] (gmap) -- (planner);
-
-% ---- Arrows: Map to Monitor ----
-\draw[arrow] (gmap.east) -- ++(0.5,0) |- (render.west) node[label, near end, above] {};
-
-% ---- Arrows: Sensors to Monitor ----
-\draw[arrow, draw=darkteal] (lidar.east) -- ++(0.8,0) |- (residual.west) node[label, near start, above] {};
-\draw[arrow, draw=darkteal] (semseg.east) -- ++(1.0,0) |- (decision.west);
-
-% ---- Monitor internal arrows ----
-\draw[arrow] (render) -- (residual);
-\draw[arrow] (residual) -- (decision);
-
-% ---- Monitor to Baseline ----
-\draw[arrow, draw=dangerzone, line width=1.0pt] (decision.east) -- ++(0.5,0) |- (ebrake.west) node[label, near end, above] {Violation!};
-
-% ---- Planner to Vehicle (normal operation) ----
-\draw[arrow, draw=safezone] (planner.south) -- (vehicle.north west) node[label, midway, left] {Normal};
-
-% ---- Baseline to Vehicle (emergency) ----
-\draw[arrow, draw=dangerzone, line width=1.0pt] (ebrake.south) |- (vehicle.north east) node[label, near end, right] {E-Stop};
-
-% ---- Feedback: Decision OK to Planner ----
-\draw[dasharrow, draw=safezone] (decision.south) -- ++(0,-0.4) -| (planner.east) node[label, near start, below right, xshift=4pt] {$\phi_{\text{safe}} = \top$};
 
 \end{tikzpicture}

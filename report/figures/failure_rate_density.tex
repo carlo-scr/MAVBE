@@ -1,0 +1,50 @@
+% Failure Rate vs. Pedestrian Density — Bar chart
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=\columnwidth,
+    height=5.5cm,
+    bar width=8pt,
+    ylabel={Collision Rate (\%)},
+    xlabel={Pedestrian Density (per scenario)},
+    symbolic x coords={3,5,7,10},
+    xtick=data,
+    ymin=0, ymax=50,
+    legend style={at={(0.02,0.98)}, anchor=north west, font=\scriptsize, cells={anchor=west}},
+    ymajorgrids=true,
+    grid style={dashed, gray!30},
+    tick label style={font=\small},
+    label style={font=\small},
+    every axis plot/.append style={fill opacity=0.85},
+]
+
+% CV Baseline
+\addplot[fill=terracotta!70, draw=terracotta, error bars/.cd, y dir=both, y explicit]
+    coordinates {
+    (3,  8.2)  +- (0, 2.1)
+    (5,  16.4) +- (0, 3.0)
+    (7,  27.8) +- (0, 3.5)
+    (10, 41.2) +- (0, 4.1)
+};
+
+% Social Force EKF
+\addplot[fill=tealaccent!70, draw=tealaccent, error bars/.cd, y dir=both, y explicit]
+    coordinates {
+    (3,  3.1)  +- (0, 1.4)
+    (5,  7.8)  +- (0, 2.2)
+    (7,  14.6) +- (0, 2.8)
+    (10, 24.3) +- (0, 3.6)
+};
+
+% SF-EKF + Simplex
+\addplot[fill=safezone!70, draw=safezone, error bars/.cd, y dir=both, y explicit]
+    coordinates {
+    (3,  0.8)  +- (0, 0.6)
+    (5,  2.1)  +- (0, 1.1)
+    (7,  5.3)  +- (0, 1.9)
+    (10, 11.7) +- (0, 2.8)
+};
+
+\legend{{CV Baseline}, {SF-EKF}, {SF-EKF + Simplex}}
+\end{axis}
+\end{tikzpicture}

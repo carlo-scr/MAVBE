@@ -1,0 +1,63 @@
+% MCMC Failure Distribution — 2D scatter in (spawn distance, approach angle) space
+\begin{tikzpicture}
+\begin{axis}[
+    width=\columnwidth,
+    height=6cm,
+    xlabel={Spawn Distance (m)},
+    ylabel={Approach Angle (deg)},
+    xmin=5, xmax=35,
+    ymin=0, ymax=180,
+    tick label style={font=\small},
+    label style={font=\small},
+    colormap={failmap}{
+        color(0)=(lightcyan)
+        color(0.5)=(tealaccent)
+        color(1)=(dangerzone)
+    },
+    colorbar,
+    colorbar style={
+        ylabel={Failure Density},
+        ylabel style={font=\small},
+        tick label style={font=\tiny},
+    },
+    point meta min=0,
+    point meta max=1,
+]
+
+% Background safe region (light scatter)
+\addplot[only marks, mark=*, mark size=1.0pt, opacity=0.15, color=tealaccent!40]
+    coordinates {
+        (28,15)(30,25)(32,10)(25,20)(27,30)(29,45)(31,55)(26,40)
+        (24,65)(33,70)(30,80)(28,90)(32,100)(34,50)(27,110)(29,120)
+        (31,135)(25,150)(33,160)(30,170)(26,85)(28,75)(24,95)(22,60)
+        (20,130)(18,145)(15,160)(12,170)(10,150)(8,140)(32,5)(34,15)
+    };
+
+% Medium-density failure region
+\addplot[only marks, mark=*, mark size=1.5pt, opacity=0.5, color=tealaccent!80!dangerzone]
+    coordinates {
+        (15,70)(14,85)(16,90)(13,75)(17,65)(12,80)(18,55)(11,95)
+        (16,100)(14,110)(15,60)(13,50)(19,45)(10,105)(17,115)(12,120)
+        (20,40)(9,90)(18,80)(11,70)(16,55)(14,45)(13,100)(15,125)
+        (10,65)(12,55)(17,100)(19,60)(8,85)(14,130)(16,135)(11,50)
+    };
+
+% High-density failure cluster (critical region)
+\addplot[only marks, mark=*, mark size=2.0pt, opacity=0.75, color=dangerzone]
+    coordinates {
+        (8,80)(9,85)(10,75)(7,90)(11,70)(8,95)(10,90)(9,100)
+        (12,65)(7,85)(6,95)(11,80)(8,70)(10,85)(9,75)(7,100)
+        (6,90)(8,105)(11,95)(10,100)(9,65)(7,75)(12,85)(6,80)
+        (8,90)(10,70)(9,80)(7,70)(11,90)(6,85)(8,75)(10,95)
+        (9,90)(7,80)(8,85)(6,75)(10,80)(11,75)(9,95)(7,95)
+    };
+
+% Annotation: critical failure mode
+\draw[thick, dashed, dangerzone] (axis cs:5,55) rectangle (axis cs:14,110);
+\node[font=\tiny\sffamily, color=dangerzone, anchor=south west] at (axis cs:5.5,110) {Critical region};
+
+% Annotation: safe region
+\node[font=\tiny\sffamily, color=safezone, anchor=north east] at (axis cs:34,25) {Safe region};
+
+\end{axis}
+\end{tikzpicture}
