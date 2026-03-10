@@ -1,137 +1,123 @@
 {
-  "abstract_vr": 5.2,
-  "abstract_sf_coll": 7.8,
-  "abstract_simplex_coll": 2.1,
-  "abstract_ci_lo": 0.057,
-  "abstract_ci_hi": 0.101,
-  "abstract_sf_reduction": 52,
-  "mc_N": 500,
-  "mc_n_fail": 39,
-  "mc_pfail": 0.078,
-  "mc_ci_lo": 0.054,
-  "mc_ci_hi": 0.102,
-  "cv_pfail": 0.164,
-  "cmaes_lambda": 20,
-  "cmaes_evals": 85,
+  "is_vr": 0.0,
+  "sf_coll_5": 20.0,
+  "sx_coll_5": 5.0,
+  "ci_lo_bayes": 0.071,
+  "ci_hi_bayes": 0.168,
+  "sf_vs_cv_pct": 33,
+  "mc_N": 100,
+  "mc_n_fail": 14,
+  "mc_pfail": 0.14,
+  "mc_ci_lo": 0.072,
+  "mc_ci_hi": 0.208,
+  "mc_se": 0.035,
+  "cv_pfail": 0.3,
+  "cmaes_evals": 56,
   "cmaes_rho_min": -3.2,
   "cmaes_d": 8.5,
   "cmaes_theta": 82,
   "cmaes_v": 1.8,
-  "mcmc_steps": 2000,
-  "mcmc_burnin": 200,
-  "mcmc_accepted": 1800,
-  "bayes_n_fail": 39,
-  "bayes_m": 500,
-  "bayes_alpha": 44,
-  "bayes_beta": 521,
-  "bayes_map": 0.076,
-  "bayes_ci_lo": 0.057,
-  "bayes_ci_hi": 0.101,
-  "is_N": 500,
+  "mcmc_steps": 500,
+  "mcmc_burnin": 50,
+  "mcmc_accepted": 450,
+  "alpha_post": 19,
+  "beta_post": 146,
+  "bayes_map": 0.11,
   "is_pfail": 0.076,
   "is_se": 0.005,
-  "mc_se": 0.012,
-  "is_vr": 5.2,
-  "ce_N_per_iter": 200,
-  "ce_rho": 0.1,
-  "ce_n_iters": 8,
+  "ce_n_iters": 3,
   "ce_pfail": 0.077,
-  "ce_vr": 4.8,
-  "is_converge": 400,
-  "mc_converge": 3000,
-  "n_max": 10,
-  "v_max": 30,
-  "v_min_vis": 50,
-  "delta_tau": 0.5,
-  "a_max": 8.0,
-  "v_ego": 20,
-  "n_trials": 100,
-  "sf_vs_cv_pct": 52,
-  "simplex_vs_sf_pct": 73,
-  "cv_3": [
-    8.2,
-    2.1
-  ],
-  "cv_5": [
-    16.4,
-    3.0
-  ],
-  "cv_7": [
-    27.8,
-    3.5
-  ],
-  "cv_10": [
-    41.2,
-    4.1
-  ],
-  "sf_3": [
-    3.1,
-    1.4
-  ],
-  "sf_5": [
-    7.8,
-    2.2
-  ],
-  "sf_7": [
-    14.6,
-    2.8
-  ],
-  "sf_10": [
-    24.3,
-    3.6
-  ],
-  "sx_3": [
-    0.8,
-    0.6
-  ],
-  "sx_5": [
-    2.1,
-    1.1
-  ],
-  "sx_7": [
-    5.3,
-    1.9
-  ],
-  "sx_10": [
-    11.7,
-    2.8
-  ],
-  "failure_broadside_pct": 68,
-  "failure_occluded_pct": 22,
-  "failure_group_pct": 10,
+  "ce_vr": 5.7,
+  "density": {
+    "cv_3": [
+      20.0,
+      40.0
+    ],
+    "cv_5": [
+      30.0,
+      45.8
+    ],
+    "cv_7": [
+      75.0,
+      43.3
+    ],
+    "cv_10": [
+      45.0,
+      49.7
+    ],
+    "sf_3": [
+      15.0,
+      35.7
+    ],
+    "sf_5": [
+      20.0,
+      40.0
+    ],
+    "sf_7": [
+      25.0,
+      43.3
+    ],
+    "sf_10": [
+      35.0,
+      47.7
+    ],
+    "sx_3": [
+      0.0,
+      0.0
+    ],
+    "sx_5": [
+      5.0,
+      21.8
+    ],
+    "sx_7": [
+      0.0,
+      0.0
+    ],
+    "sx_10": [
+      5.0,
+      21.8
+    ]
+  },
+  "simplex_vs_sf_pct": 75,
+  "tau_star": 2.0,
+  "sf_coll_at_tau_star": 0.0,
+  "sf_fp_at_tau_star": 100.0,
+  "stl_violation_time": 3.2,
+  "stl_min_ttc": 3.1,
+  "stl_rho": 1.1,
+  "cv_med": 52.5,
+  "sf_med": 22.5,
+  "low_reduction": 25,
+  "med_reduction": 57,
+  "high_reduction": 22,
   "ablation": {
     "full": {
-      "coll": 2.1,
-      "ade": 0.42,
-      "fde": 0.78,
-      "fp": 6.3
+      "coll": 3.3,
+      "ade": 0.4,
+      "fde": 0.99,
+      "fp": 0
     },
     "no_social": {
-      "coll": 4.8,
-      "ade": 0.58,
-      "fde": 1.12,
-      "fp": 8.1
+      "coll": 13.3,
+      "ade": 0.66,
+      "fde": 1.7,
+      "fp": 0
     },
     "no_simplex": {
-      "coll": 7.8,
-      "ade": 0.39,
-      "fde": 0.71,
-      "fp": 0.0
+      "coll": 16.7,
+      "ade": 0.42,
+      "fde": 1.01,
+      "fp": 0
     },
     "cv_only": {
-      "coll": 16.4,
-      "ade": 0.64,
-      "fde": 1.24,
-      "fp": 0.0
+      "coll": 50.0,
+      "ade": 0.63,
+      "fde": 1.59,
+      "fp": 0
     }
   },
-  "tau_star": 2.0,
-  "sf_coll_at_tau_star": 3.1,
-  "sf_fp_at_tau_star": 6.3,
-  "cv_med": 22.1,
-  "sf_med": 11.2,
-  "med_reduction": 49,
-  "low_reduction": 62,
-  "high_reduction": 41,
-  "is_equiv_samples": 96
+  "failure_broadside_pct": 42,
+  "failure_occluded_pct": 6,
+  "failure_group_pct": 52,
+  "is_equiv_samples": 100
 }
