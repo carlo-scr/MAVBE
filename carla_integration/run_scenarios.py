@@ -327,15 +327,21 @@ def run_single_scenario(
 
         camera.listen(on_image)
 
-        # ── Spawn pedestrians on the navigation mesh ────────────────────
+        # ── Prepare pedestrian spawning (staggered over first 60% of sim) ─
         walker_bps = bp_lib.filter("walker.pedestrian.*")
         walkers = []
         controllers = []
         ped_id_map = {}  # CARLA actor ID -> our ped_id
 
+        # Schedule: spawn one ped every spawn_interval seconds
+        spawn_interval = max(2.0, (t_max * 0.6) / max(spec.n_ped, 1))
+        spawn_queue = list(enumerate(spec.pedestrians))  # (idx, ped_cfg)
+        next_spawn_idx = 0
+
         world.tick()  # tick so ego transform is settled
 
-        for ped_cfg in spec.pedestrians:
+        def _spawn_one_ped(ped_cfg):
+            """Spawn a single pedestrian relative to ego's current position."""
             ego_t = ego.get_transform()
             fwd = ego_t.get_forward_vector()
             right_x, right_y = -fwd.y, fwd.x
@@ -349,9 +355,6 @@ def run_single_scenario(
                 z=ego_t.location.z,
             )
 
-            # Snap to navigable sidewalk/ground using CARLA's navmesh,
-            # but reject the snap if it moves the ped too far from the
-            # intended position (would put them out of camera view).
             spawn_loc = None
             waypoint = world.get_map().get_waypoint(
                 desired_loc, project_to_road=True,
@@ -364,9 +367,7 @@ def run_single_scenario(
                 if math.sqrt(dx * dx + dy * dy) < 10.0:
                     spawn_loc = wp_loc + carla.Location(z=0.5)
 
-            # Fallback: use desired location with ground-level z from waypoint
             if spawn_loc is None:
-                # Get any nearby waypoint just for the z coordinate
                 any_wp = world.get_map().get_waypoint(desired_loc, project_to_road=True)
                 if any_wp is not None:
                     spawn_loc = carla.Location(
@@ -389,7 +390,6 @@ def run_single_scenario(
 
             walker = world.try_spawn_actor(walker_bp, spawn_transform)
             if walker is None:
-                # Try a random navigable location as fallback
                 fallback_loc = world.get_random_location_from_navigation()
                 if fallback_loc is not None:
                     walker = world.try_spawn_actor(walker_bp, carla.Transform(
@@ -398,33 +398,38 @@ def run_single_scenario(
                     ))
             if walker is None:
                 logger.warning("  Failed to spawn pedestrian %d", ped_cfg.ped_id)
-                continue
+                return
 
             walkers.append(walker)
             actors_to_destroy.append(walker)
             ped_id_map[walker.id] = ped_cfg.ped_id
 
-            # AI controller
             ctrl_bp = bp_lib.find("controller.ai.walker")
             ctrl = world.spawn_actor(ctrl_bp, carla.Transform(), walker)
             controllers.append((ctrl, ped_cfg))
             actors_to_destroy.append(ctrl)
 
-        logger.info("  Spawned %d / %d pedestrians", len(walkers), spec.n_ped)
-
-        # Tick to register controllers, then start them
-        world.tick()
-        for ctrl, ped_cfg in controllers:
+            # Need an extra tick so the controller registers, then start it
+            world.tick()
             ctrl.start()
             ctrl.set_max_speed(ped_cfg.v_init)
-            # Walk towards the ego's path (navmesh-routed)
             ctrl.go_to_location(ego.get_location())
+            logger.info("  Spawned ped %d at t=%.1fs (%d/%d)",
+                        ped_cfg.ped_id, sim_time, len(walkers), spec.n_ped)
 
-        # ── Ego control: autopilot at target speed ───────────────────────
-        ego.set_autopilot(True)
-        # Note: CARLA autopilot doesn't guarantee exact speed; it follows
-        # traffic rules. For more precise control, use a PID controller
-        # on vehicle.apply_control(). For now, autopilot is sufficient.
+        # Spawn the first pedestrian immediately so the scene isn't empty
+        sim_time = 0.0
+        if spawn_queue:
+            _, first_cfg = spawn_queue[0]
+            _spawn_one_ped(first_cfg)
+            next_spawn_idx = 1
+
+        # ── Ego control: smooth PID speed controller ─────────────────────
+        target_speed_ms = spec.v_ego_kmh / 3.6
+        # PID gains for throttle/brake
+        _kp, _ki, _kd = 0.8, 0.05, 0.1
+        _speed_integral = 0.0
+        _speed_prev_err = 0.0
 
         # ── Main simulation loop ─────────────────────────────────────────
         n_steps = int(t_max / dt)
@@ -434,6 +439,43 @@ def run_single_scenario(
         for step in range(n_steps):
             world.tick()
             sim_time = (step + 1) * dt
+
+            # ── Staggered pedestrian spawning ─────────────────────────
+            if next_spawn_idx < len(spawn_queue):
+                next_spawn_time = next_spawn_idx * spawn_interval
+                if sim_time >= next_spawn_time:
+                    _, ped_cfg = spawn_queue[next_spawn_idx]
+                    _spawn_one_ped(ped_cfg)
+                    next_spawn_idx += 1
+
+            # ── PID speed control ─────────────────────────────────────
+            if not emergency_active:
+                cur_v = ego.get_velocity()
+                cur_speed = math.sqrt(cur_v.x**2 + cur_v.y**2 + cur_v.z**2)
+                err = target_speed_ms - cur_speed
+                _speed_integral += err * dt
+                _speed_integral = max(-2.0, min(2.0, _speed_integral))  # anti-windup
+                derr = (err - _speed_prev_err) / dt
+                _speed_prev_err = err
+                pid_out = _kp * err + _ki * _speed_integral + _kd * derr
+                ego_ctrl = carla.VehicleControl()
+                if pid_out >= 0:
+                    ego_ctrl.throttle = min(1.0, pid_out)
+                    ego_ctrl.brake = 0.0
+                else:
+                    ego_ctrl.throttle = 0.0
+                    ego_ctrl.brake = min(1.0, -pid_out)
+                # Keep steering straight (follow lane)
+                ego_wp = world.get_map().get_waypoint(
+                    ego.get_transform().location, project_to_road=True)
+                if ego_wp is not None:
+                    wp_yaw = math.radians(ego_wp.transform.rotation.yaw)
+                    ego_yaw = math.radians(ego.get_transform().rotation.yaw)
+                    yaw_err = wp_yaw - ego_yaw
+                    # Normalise to [-pi, pi]
+                    yaw_err = (yaw_err + math.pi) % (2 * math.pi) - math.pi
+                    ego_ctrl.steer = max(-1.0, min(1.0, yaw_err * 2.0))
+                ego.apply_control(ego_ctrl)
 
             # Ego state
             ego_t = ego.get_transform()
@@ -488,13 +530,15 @@ def run_single_scenario(
                 if not emergency_active:
                     emergency_active = True
                     result.simplex_activations += 1
+                    _speed_integral = 0.0  # reset PID state
                 ctrl = carla.VehicleControl()
                 ctrl.brake = 1.0
                 ctrl.throttle = 0.0
                 ego.apply_control(ctrl)
             elif emergency_active and step_min_ttc > spec.tau_safe * 1.5:
                 emergency_active = False
-                ego.set_autopilot(True)
+                _speed_integral = 0.0
+                _speed_prev_err = 0.0
 
             # Progress logging every 5 seconds
             if (step + 1) % int(5.0 / dt) == 0:
