@@ -242,12 +242,12 @@ def run_single_scenario(
         spec=asdict(spec),
     )
 
-    # Frame output directory
+    # Video output
     scenario_dir = output_dir / f"scenario_{spec.scenario_id:03d}"
-    frames_dir = scenario_dir / "frames"
-    if save_video:
-        frames_dir.mkdir(parents=True, exist_ok=True)
-    result.frames_dir = str(frames_dir)
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+    video_path = scenario_dir / "video.mp4"
+    vid_writer = None
+    result.frames_dir = str(scenario_dir)
 
     try:
         # ── Ego vehicle ──────────────────────────────────────────────────
@@ -303,25 +303,26 @@ def run_single_scenario(
         camera = world.spawn_actor(cam_bp, cam_transform, attach_to=ego)
         actors_to_destroy.append(camera)
 
-        frame_counter = [0]
+        # Video writer (initialised on first frame)
+        import cv2
 
         def on_image(image):
-            if save_video:
-                # Save as PNG for later perception processing
-                arr = np.frombuffer(image.raw_data, dtype=np.uint8)
-                arr = arr.reshape((image.height, image.width, 4))[:, :, :3]
-                frame_path = frames_dir / f"frame_{frame_counter[0]:06d}.png"
-                try:
-                    import cv2
-                    cv2.imwrite(str(frame_path), arr)
-                except ImportError:
-                    # Fallback: save as raw numpy
-                    np.save(str(frame_path.with_suffix(".npy")), arr)
-                frame_counter[0] += 1
+            nonlocal vid_writer
+            if not save_video:
+                return
+            arr = np.frombuffer(image.raw_data, dtype=np.uint8)
+            arr = arr.reshape((image.height, image.width, 4))[:, :, :3]  # BGRA→BGR
+            if vid_writer is None:
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                vid_writer = cv2.VideoWriter(
+                    str(video_path), fourcc, 1.0 / dt,
+                    (image.width, image.height),
+                )
+            vid_writer.write(arr)
 
         camera.listen(on_image)
 
-        # ── Spawn pedestrians ────────────────────────────────────────────
+        # ── Spawn pedestrians on the navigation mesh ────────────────────
         walker_bps = bp_lib.filter("walker.pedestrian.*")
         walkers = []
         controllers = []
@@ -332,17 +333,37 @@ def run_single_scenario(
         for ped_cfg in spec.pedestrians:
             ego_t = ego.get_transform()
             fwd = ego_t.get_forward_vector()
-            # Right vector (perpendicular to forward in XY plane)
             right_x, right_y = -fwd.y, fwd.x
 
             offset_fwd = ped_cfg.d_spawn * math.cos(ped_cfg.theta_approach)
             offset_lat = ped_cfg.d_spawn * math.sin(ped_cfg.theta_approach)
 
-            spawn_loc = carla.Location(
+            desired_loc = carla.Location(
                 x=ego_t.location.x + fwd.x * offset_fwd + right_x * offset_lat,
                 y=ego_t.location.y + fwd.y * offset_fwd + right_y * offset_lat,
-                z=ego_t.location.z + 1.0,
+                z=ego_t.location.z,
             )
+
+            # Snap to navigable sidewalk/ground using CARLA's navmesh
+            # project_to_road with walk_distance finds the nearest walkable point
+            waypoint = world.get_map().get_waypoint(
+                desired_loc, project_to_road=True,
+                lane_type=carla.LaneType.Sidewalk | carla.LaneType.Shoulder,
+            )
+            if waypoint is not None:
+                spawn_loc = waypoint.transform.location + carla.Location(z=0.5)
+            else:
+                # Fallback: raycast down to find ground
+                spawn_loc = desired_loc
+                spawn_loc.z += 50.0  # start high
+                hit = world.cast_ray(spawn_loc, carla.Location(
+                    x=spawn_loc.x, y=spawn_loc.y, z=spawn_loc.z - 100.0
+                ))
+                if hit:
+                    spawn_loc.z = hit[0].location.z + 0.5
+                else:
+                    spawn_loc.z = ego_t.location.z + 0.5
+
             spawn_transform = carla.Transform(
                 spawn_loc, carla.Rotation(yaw=float(rng.uniform(0, 360)))
             )
@@ -353,11 +374,13 @@ def run_single_scenario(
 
             walker = world.try_spawn_actor(walker_bp, spawn_transform)
             if walker is None:
-                # Try slightly different location
-                spawn_loc.z += 0.5
-                walker = world.try_spawn_actor(walker_bp, carla.Transform(
-                    spawn_loc, spawn_transform.rotation
-                ))
+                # Try a random navigable location as fallback
+                fallback_loc = world.get_random_location_from_navigation()
+                if fallback_loc is not None:
+                    walker = world.try_spawn_actor(walker_bp, carla.Transform(
+                        fallback_loc + carla.Location(z=0.5),
+                        spawn_transform.rotation,
+                    ))
             if walker is None:
                 logger.warning("  Failed to spawn pedestrian %d", ped_cfg.ped_id)
                 continue
@@ -379,7 +402,7 @@ def run_single_scenario(
         for ctrl, ped_cfg in controllers:
             ctrl.start()
             ctrl.set_max_speed(ped_cfg.v_init)
-            # Walk towards the ego's path
+            # Walk towards the ego's path (navmesh-routed)
             ctrl.go_to_location(ego.get_location())
 
         # ── Ego control: autopilot at target speed ───────────────────────
@@ -481,6 +504,11 @@ def run_single_scenario(
         raise
 
     finally:
+        # Release video writer
+        if vid_writer is not None:
+            vid_writer.release()
+            logger.info("  Video saved to %s", video_path)
+
         # Stop controllers first
         for ctrl, _ in controllers:
             try:
@@ -603,11 +631,11 @@ def main():
     logger.info("Results saved to %s", output_dir / "scenario_results.json")
 
     if args.save_video:
-        logger.info("Frames saved to %s/scenario_*/frames/", output_dir)
+        logger.info("Videos saved to %s/scenario_*/video.mp4", output_dir)
         logger.info(
-            "\nNext step: run perception on saved frames:\n"
+            "\nNext step: run perception on saved video:\n"
             "  python perception/detect_dual_tracking.py \\\n"
-            "    --source runs/carla_scenarios/scenario_000/frames/ \\\n"
+            "    --source runs/carla_scenarios/scenario_000/video.mp4 \\\n"
             "    --weights perception/yolov9/weights/yolov9-c.pt \\\n"
             "    --save_plot_name scenario_000"
         )
