@@ -168,11 +168,15 @@ def generate_scenario_specs(
     n_scenarios: int = 10,
     n_ped: int = 5,
     tracker: str = "sfekf",
-    v_ego_kmh: float = 20.0,
+    v_ego_kmh: float = 10.0,
     tau_safe: float = 2.0,
     base_seed: int = 42,
 ) -> List[ScenarioSpec]:
-    """Generate N scenario specifications from the paper's disturbance model."""
+    """Generate N scenario specifications from the paper's disturbance model.
+
+    Pedestrians spawn *ahead* of the ego within the camera FOV (±45°) at
+    moderate distance (8--20 m) so they are visible in the 90° FOV camera.
+    """
     rng = np.random.default_rng(base_seed)
     specs = []
 
@@ -182,10 +186,11 @@ def generate_scenario_specs(
 
         peds = []
         for j in range(n_ped):
+            # Spawn ahead of ego within camera FOV
             peds.append(PedestrianConfig(
                 ped_id=j,
-                d_spawn=float(ped_rng.uniform(5, 35)),
-                theta_approach=float(ped_rng.uniform(0, math.pi)),
+                d_spawn=float(ped_rng.uniform(8, 20)),
+                theta_approach=float(ped_rng.uniform(-math.pi / 4, math.pi / 4)),
                 v_init=float(ped_rng.uniform(0.5, 2.0)),
             ))
 
@@ -344,25 +349,35 @@ def run_single_scenario(
                 z=ego_t.location.z,
             )
 
-            # Snap to navigable sidewalk/ground using CARLA's navmesh
-            # project_to_road with walk_distance finds the nearest walkable point
+            # Snap to navigable sidewalk/ground using CARLA's navmesh,
+            # but reject the snap if it moves the ped too far from the
+            # intended position (would put them out of camera view).
+            spawn_loc = None
             waypoint = world.get_map().get_waypoint(
                 desired_loc, project_to_road=True,
                 lane_type=carla.LaneType.Sidewalk | carla.LaneType.Shoulder,
             )
             if waypoint is not None:
-                spawn_loc = waypoint.transform.location + carla.Location(z=0.5)
-            else:
-                # Fallback: raycast down to find ground
-                spawn_loc = desired_loc
-                spawn_loc.z += 50.0  # start high
-                hit = world.cast_ray(spawn_loc, carla.Location(
-                    x=spawn_loc.x, y=spawn_loc.y, z=spawn_loc.z - 100.0
-                ))
-                if hit:
-                    spawn_loc.z = hit[0].location.z + 0.5
+                wp_loc = waypoint.transform.location
+                dx = wp_loc.x - desired_loc.x
+                dy = wp_loc.y - desired_loc.y
+                if math.sqrt(dx * dx + dy * dy) < 10.0:
+                    spawn_loc = wp_loc + carla.Location(z=0.5)
+
+            # Fallback: use desired location with ground-level z from waypoint
+            if spawn_loc is None:
+                # Get any nearby waypoint just for the z coordinate
+                any_wp = world.get_map().get_waypoint(desired_loc, project_to_road=True)
+                if any_wp is not None:
+                    spawn_loc = carla.Location(
+                        x=desired_loc.x, y=desired_loc.y,
+                        z=any_wp.transform.location.z + 0.5,
+                    )
                 else:
-                    spawn_loc.z = ego_t.location.z + 0.5
+                    spawn_loc = carla.Location(
+                        x=desired_loc.x, y=desired_loc.y,
+                        z=ego_t.location.z + 0.5,
+                    )
 
             spawn_transform = carla.Transform(
                 spawn_loc, carla.Rotation(yaw=float(rng.uniform(0, 360)))
@@ -547,8 +562,8 @@ def main():
     parser.add_argument("--tracker", type=str, default="sfekf",
                         choices=["cv", "sfekf", "sfekf_simplex"],
                         help="Tracker configuration (default: sfekf)")
-    parser.add_argument("--v-ego", type=float, default=20.0,
-                        help="Ego speed in km/h (default: 20)")
+    parser.add_argument("--v-ego", type=float, default=10.0,
+                        help="Ego speed in km/h (default: 10)")
     parser.add_argument("--tau-safe", type=float, default=2.0,
                         help="Safety threshold in seconds (default: 2.0)")
     parser.add_argument("--seed", type=int, default=42,
