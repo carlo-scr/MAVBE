@@ -25,11 +25,11 @@
 
 % TTC trajectory — CV Baseline (enters violation zone)
 \addplot[thick, color=terracotta, mark=none]
-    coordinates {(0.0, 3.0)(1.0, 3.2)(1.9, 2.9)(2.9, 3.1)(3.8, 2.8)(4.8, 3.0)(5.7, 2.8)(6.7, 3.0)(7.6, 3.0)(8.6, 3.0)(9.5, 3.3)};
+    coordinates {(0.0, 3.2)(1.0, 2.2)(1.9, 1.3)(2.9, 0.3)(3.8, 6.0)(4.8, 6.0)(5.7, 6.0)(6.7, 6.0)(7.6, 6.0)(8.6, 6.0)(9.5, 6.0)};
 
 % TTC trajectory — SF-EKF + Simplex (monitor triggers)
 \addplot[thick, color=tealaccent, mark=none]
-    coordinates {(0.0, 3.0)(1.0, 3.2)(1.9, 2.9)(2.9, 3.1)(3.8, 2.8)(4.8, 3.0)(5.7, 2.8)(6.7, 3.0)(7.6, 3.0)(8.6, 3.0)(9.5, 3.3)};
+    coordinates {(0.0, 3.2)(1.0, 2.2)(1.9, 2.0)(2.9, 6.0)(3.8, 6.0)(4.8, 6.0)(5.7, 6.0)(6.7, 6.0)(7.6, 6.0)(8.6, 6.0)(9.5, 6.0)};
 
 % Simplex trigger point
 \draw[thick, -{Stealth[length=4pt]}, color=safezone] (axis cs:4.5,3.5) -- (axis cs:3.85,2.15);
@@ -37,12 +37,12 @@
 
 % STL robustness annotation
 \draw[thick, {Stealth[length=3pt]}-{Stealth[length=3pt]}, color=mauvecol]
-    (axis cs:6.0,3.1) -- (axis cs:6.0,2.0);
-\node[font=\tiny\sffamily, color=mauvecol, anchor=west] at (axis cs:6.1,2.5) {$\rho(\varphi) = 1.1$};
+    (axis cs:6.0,0.0) -- (axis cs:6.0,2.0);
+\node[font=\tiny\sffamily, color=mauvecol, anchor=west] at (axis cs:6.1,1.0) {$\rho(\varphi) = -2.0$};
 
 % Collision event marker for CV
 \node[font=\tiny\sffamily, color=dangerzone, anchor=north] at (axis cs:6.0,-0.1) {Near-collision};
-\draw[thick, color=dangerzone, fill=dangerzone] (axis cs:6.0,3.1) circle (2pt);
+\draw[thick, color=dangerzone, fill=dangerzone] (axis cs:6.0,0.0) circle (2pt);
 
 % Violation zone label
 \node[font=\tiny\sffamily\itshape, color=dangerzone!70, anchor=north east] at (axis cs:9.9,1.9) {STL violation region};

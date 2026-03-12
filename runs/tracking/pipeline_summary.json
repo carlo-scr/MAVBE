@@ -1,0 +1,23 @@
+{
+  "n_videos": 1,
+  "total_processing_time_s": 145.1,
+  "total_frames": 613,
+  "total_tracks": 4,
+  "total_detections": 194,
+  "tracker_type": "sfekf",
+  "conf_thres": 0.5,
+  "iou_thres": 0.45,
+  "per_video": [
+    {
+      "video": "video",
+      "frames": 613,
+      "duration_s": 30.6,
+      "fps": 20.0,
+      "n_tracks": 4,
+      "n_detections": 194,
+      "processing_time_s": 143.0,
+      "output_video": "/Users/carloschreiber/Desktop/Uni/Quarter 2/CS238V - Algorithms for Validation/Final Project/MAVBE/runs/tracking/video/video_tracked.mp4",
+      "output_trajectory_plot": "/Users/carloschreiber/Desktop/Uni/Quarter 2/CS238V - Algorithms for Validation/Final Project/MAVBE/runs/tracking/video/video_trajectories.png"
+    }
+  ]
+}

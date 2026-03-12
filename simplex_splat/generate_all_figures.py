@@ -69,8 +69,8 @@ def generate_failure_rate_density(data: dict):
         f"    ({n},  {get_val('cv', n)[0]})  +- (0, {get_val('cv', n)[1]})"
         for n in densities
     )
-    sf_coords = "\n".join(
-        f"    ({n},  {get_val('sfekf', n)[0]})  +- (0, {get_val('sfekf', n)[1]})"
+    cvsx_coords = "\n".join(
+        f"    ({n},  {get_val('cv_simplex', n)[0]})  +- (0, {get_val('cv_simplex', n)[1]})"
         for n in densities
     )
     sx_coords = "\n".join(
@@ -91,7 +91,7 @@ def generate_failure_rate_density(data: dict):
     xlabel={{Pedestrian Density (per scenario)}},
     symbolic x coords={{3,5,7,10}},
     xtick=data,
-    ymin=0, ymax=50,
+    ymin=0, ymax=25,
     legend style={{at={{(0.02,0.98)}}, anchor=north west, font=\\scriptsize, cells={{anchor=west}}}},
     ymajorgrids=true,
     grid style={{dashed, gray!30}},
@@ -100,16 +100,16 @@ def generate_failure_rate_density(data: dict):
     every axis plot/.append style={{fill opacity=0.85}},
 ]
 
-% CV Baseline
+% Baseline (CV = SF-EKF without Simplex)
 \\addplot[fill=terracotta!70, draw=terracotta, error bars/.cd, y dir=both, y explicit]
     coordinates {{
 {cv_coords}
 }};
 
-% Social Force EKF
-\\addplot[fill=tealaccent!70, draw=tealaccent, error bars/.cd, y dir=both, y explicit]
+% CV + Simplex
+\\addplot[fill=goldenrod!70, draw=goldenrod, error bars/.cd, y dir=both, y explicit]
     coordinates {{
-{sf_coords}
+{cvsx_coords}
 }};
 
 % SF-EKF + Simplex
@@ -118,7 +118,7 @@ def generate_failure_rate_density(data: dict):
 {sx_coords}
 }};
 
-\\legend{{{{CV Baseline}}, {{SF-EKF}}, {{SF-EKF + Simplex}}}}
+\\legend{{{{Baseline (CV/SF-EKF)}}, {{CV + Simplex}}, {{SF-EKF + Simplex}}}}
 \\end{{axis}}
 \\end{{tikzpicture}}
 """
