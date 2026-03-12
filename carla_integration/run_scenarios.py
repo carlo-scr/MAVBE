@@ -334,7 +334,7 @@ def run_single_scenario(
     # Video output
     scenario_dir = output_dir / f"scenario_{spec.scenario_id:03d}"
     scenario_dir.mkdir(parents=True, exist_ok=True)
-    video_path = scenario_dir / "video.avi"
+    video_path = scenario_dir / "video.mp4"
     vid_writer = None
     result.frames_dir = str(scenario_dir)
 
@@ -402,7 +402,7 @@ def run_single_scenario(
             arr = np.frombuffer(image.raw_data, dtype=np.uint8)
             arr = arr.reshape((image.height, image.width, 4))[:, :, :3]  # BGRA→BGR
             if vid_writer is None:
-                fourcc = cv2.VideoWriter_fourcc(*"XVID")
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 vid_writer = cv2.VideoWriter(
                     str(video_path), fourcc, 1.0 / dt,
                     (image.width, image.height),
@@ -883,11 +883,11 @@ def main():
     logger.info("Results saved to %s", output_dir / "scenario_results.json")
 
     if args.save_video:
-        logger.info("Videos saved to %s/scenario_*/video.avi", output_dir)
+        logger.info("Videos saved to %s/scenario_*/video.mp4", output_dir)
         logger.info(
             "\nNext step: run perception on saved video:\n"
             "  python perception/detect_dual_tracking.py \\\n"
-            "    --source runs/carla_scenarios/scenario_000/video.avi \\\n"
+            "    --source runs/carla_scenarios/scenario_000/video.mp4 \\\n"
             "    --weights perception/yolov9/weights/yolov9-c.pt \\\n"
             "    --save_plot_name scenario_000"
         )

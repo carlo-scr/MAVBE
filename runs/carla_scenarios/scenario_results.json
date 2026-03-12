@@ -3,8 +3,8 @@
     "scenario_id": 0,
     "collision": false,
     "collision_time": -1.0,
-    "min_ttc": 2.7775968273802047,
-    "rho_min": 0.7775968273802047,
+    "min_ttc": 2.778200601208818,
+    "rho_min": 0.7782006012088178,
     "ttc_trace": [
       Infinity,
       Infinity,
@@ -222,9 +222,9 @@
       Infinity,
       Infinity,
       Infinity,
-      2.7776,
-      2.7828,
-      2.834,
+      2.7782,
+      2.7835,
+      2.8347,
       Infinity,
       Infinity,
       Infinity,
@@ -608,7 +608,7 @@
       Infinity
     ],
     "simplex_activations": 0,
-    "duration_s": 82.0,
+    "duration_s": 63.2,
     "n_ped_spawned": 4,
     "spec": {
       "scenario_id": 0,
@@ -1267,7 +1267,7 @@
       Infinity
     ],
     "simplex_activations": 0,
-    "duration_s": 73.0,
+    "duration_s": 61.8,
     "n_ped_spawned": 5,
     "spec": {
       "scenario_id": 1,
