@@ -14,8 +14,19 @@ Each scenario follows the paper's disturbance model:
   - N_ped pedestrians spawn with (d_spawn, theta_approach, v_init)
   - Duration: 30 s at 20 Hz
 
+60 % of pedestrians use CARLA's AI controller (nav-mesh walking).
+40 % are "disturbed" — prescribed velocity via WalkerControl each tick.
+The --disturbance flag selects which distribution the 40 % sample from:
+  NOMINAL  – gentle crossings, rare failures
+             θ ∈ [10°, 40°], v ∈ [0.5, 1.2] m/s
+  FUZZED   – broadside crossings, frequent failures
+             θ ∈ [55°, 110°], v ∈ [1.5, 2.0] m/s
+All traffic lights are forced green so the ego is never stopped by signals.
+
 Usage:
     python -m carla_integration.run_scenarios --n-scenarios 10
+    python -m carla_integration.run_scenarios --n-scenarios 10 --disturbance nominal
+    python -m carla_integration.run_scenarios --n-scenarios 10 --disturbance fuzzed --disturbed-frac 0.4
     python -m carla_integration.run_scenarios --n-scenarios 10 --n-ped 7 --tracker sfekf_simplex
     python -m carla_integration.run_scenarios --n-scenarios 10 --save-video
 
@@ -64,12 +75,53 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
+class DisturbanceProfile:
+    """Tunable disturbance parameters for the 40 % non-AI (prescribed) pedestrians.
+
+    Both profiles keep disturbed_frac = 0.4 (40 % prescribed, 60 % AI-controlled).
+    Only the *crossing behaviour* of the disturbed peds differs:
+
+    NOMINAL  – shallow crossing angles, moderate speed → failures are rare.
+               θ^approach ∈ [10°, 40°], v^init ∈ [0.5, 1.2] m/s.
+
+    FUZZED   – broadside crossings at high speed (paper's critical failure region)
+               → failures are frequent.
+               θ^approach ∈ [55°, 110°], v^init ∈ [1.5, 2.0] m/s.
+
+    All angles are in **degrees** in this config; converted to radians at sampling time.
+    """
+    theta_min_deg: float = 55.0     # min approach angle (degrees)
+    theta_max_deg: float = 110.0    # max approach angle (degrees)
+    v_min: float = 1.5              # min walk speed (m/s)
+    v_max: float = 2.0              # max walk speed (m/s)
+    disturbed_frac: float = 0.4     # fraction of peds that are disturbed (40 % by default)
+    d_spawn_min: float = 8.0        # min spawn distance (m)
+    d_spawn_max: float = 20.0       # max spawn distance (m)
+
+
+NOMINAL_DISTURBANCE = DisturbanceProfile(
+    theta_min_deg=10.0, theta_max_deg=40.0,
+    v_min=0.5, v_max=1.2,
+    disturbed_frac=0.4,
+    d_spawn_min=10.0, d_spawn_max=20.0,
+)
+
+FUZZED_DISTURBANCE = DisturbanceProfile(
+    theta_min_deg=55.0, theta_max_deg=110.0,
+    v_min=1.5, v_max=2.0,
+    disturbed_frac=0.4,
+    d_spawn_min=8.0, d_spawn_max=20.0,
+)
+
+
+@dataclass
 class PedestrianConfig:
     """Per-pedestrian disturbance vector τ_i."""
     ped_id: int
-    d_spawn: float          # metres from ego path [5, 35]
-    theta_approach: float   # radians relative to ego heading [0, π]
-    v_init: float           # m/s [0.5, 2.0]
+    d_spawn: float          # metres from ego path
+    theta_approach: float   # radians relative to ego heading
+    v_init: float           # m/s
+    disturbed: bool = False # True → prescribed broadside crossing via WalkerControl
 
 
 @dataclass
@@ -171,12 +223,23 @@ def generate_scenario_specs(
     v_ego_kmh: float = 10.0,
     tau_safe: float = 2.0,
     base_seed: int = 42,
+    disturbance: Optional[DisturbanceProfile] = None,
 ) -> List[ScenarioSpec]:
-    """Generate N scenario specifications from the paper's disturbance model.
+    """Generate N scenario specifications.
 
-    Pedestrians spawn *ahead* of the ego within the camera FOV (±45°) at
-    moderate distance (8--20 m) so they are visible in the 90° FOV camera.
+    Args:
+        disturbance: Disturbance profile for non-AI (prescribed) pedestrians.
+                     Defaults to FUZZED_DISTURBANCE.  Pass NOMINAL_DISTURBANCE
+                     for a baseline where crossings are gentler and failures rare.
+
+    Normal (AI-controlled) pedestrians always use:
+        θ^approach ∈ [-45°, 45°] (within camera FOV), v_init ∈ [0.5, 2.0] m/s.
+
+    Disturbed (WalkerControl) pedestrians sample from the given profile.
     """
+    if disturbance is None:
+        disturbance = FUZZED_DISTURBANCE
+
     rng = np.random.default_rng(base_seed)
     specs = []
 
@@ -185,14 +248,28 @@ def generate_scenario_specs(
         ped_rng = np.random.default_rng(seed)
 
         peds = []
+        n_disturbed = max(1, round(n_ped * disturbance.disturbed_frac))
+        disturbed_ids = set(ped_rng.choice(n_ped, size=n_disturbed, replace=False))
+
         for j in range(n_ped):
-            # Spawn ahead of ego within camera FOV
-            peds.append(PedestrianConfig(
-                ped_id=j,
-                d_spawn=float(ped_rng.uniform(8, 20)),
-                theta_approach=float(ped_rng.uniform(-math.pi / 4, math.pi / 4)),
-                v_init=float(ped_rng.uniform(0.5, 2.0)),
-            ))
+            if j in disturbed_ids:
+                d_spawn = float(ped_rng.uniform(disturbance.d_spawn_min, disturbance.d_spawn_max))
+                theta_approach = math.radians(float(
+                    ped_rng.uniform(disturbance.theta_min_deg, disturbance.theta_max_deg)
+                ))
+                v_init = float(ped_rng.uniform(disturbance.v_min, disturbance.v_max))
+                peds.append(PedestrianConfig(
+                    ped_id=j, d_spawn=d_spawn, theta_approach=theta_approach,
+                    v_init=v_init, disturbed=True,
+                ))
+            else:
+                # Normal: within camera FOV, moderate speed, AI controller
+                d_spawn = float(ped_rng.uniform(8, 20))
+                theta_approach = float(ped_rng.uniform(-math.pi / 4, math.pi / 4))
+                peds.append(PedestrianConfig(
+                    ped_id=j, d_spawn=d_spawn, theta_approach=theta_approach,
+                    v_init=float(ped_rng.uniform(0.5, 2.0)), disturbed=False,
+                ))
 
         specs.append(ScenarioSpec(
             scenario_id=i,
@@ -237,6 +314,13 @@ def run_single_scenario(
     settings.fixed_delta_seconds = dt
     world.apply_settings(settings)
 
+    # ── Force all traffic lights to green and freeze them ─────────────
+    for tl in world.get_actors().filter("traffic.traffic_light*"):
+        tl.set_state(carla.TrafficLightState.Green)
+        tl.set_green_time(9999.0)
+        tl.freeze(True)
+    logger.info("  All traffic lights forced to green")
+
     bp_lib = world.get_blueprint_library()
     spawn_points = world.get_map().get_spawn_points()
     rng = np.random.default_rng(spec.seed)
@@ -250,7 +334,7 @@ def run_single_scenario(
     # Video output
     scenario_dir = output_dir / f"scenario_{spec.scenario_id:03d}"
     scenario_dir.mkdir(parents=True, exist_ok=True)
-    video_path = scenario_dir / "video.mp4"
+    video_path = scenario_dir / "video.avi"
     vid_writer = None
     result.frames_dir = str(scenario_dir)
 
@@ -318,7 +402,7 @@ def run_single_scenario(
             arr = np.frombuffer(image.raw_data, dtype=np.uint8)
             arr = arr.reshape((image.height, image.width, 4))[:, :, :3]  # BGRA→BGR
             if vid_writer is None:
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                fourcc = cv2.VideoWriter_fourcc(*"XVID")
                 vid_writer = cv2.VideoWriter(
                     str(video_path), fourcc, 1.0 / dt,
                     (image.width, image.height),
@@ -327,10 +411,13 @@ def run_single_scenario(
 
         camera.listen(on_image)
 
-        # ── Prepare pedestrian spawning (staggered over first 60% of sim) ─
+        # ── Prepare pedestrian spawning: 2 pre-spawned, rest staggered ───
+        # Disturbed peds (~20%): prescribed velocity via WalkerControl (broadside crossing)
+        # Normal peds (~80%): AI controller follows nav mesh
         walker_bps = bp_lib.filter("walker.pedestrian.*")
         walkers = []
-        controllers = []
+        walker_configs: List[Tuple["carla.Actor", PedestrianConfig]] = []  # disturbed peds only
+        ai_controllers = []  # (controller, ped_cfg) for normal peds
         ped_id_map = {}  # CARLA actor ID -> our ped_id
 
         # Schedule: spawn one ped every spawn_interval seconds
@@ -340,8 +427,15 @@ def run_single_scenario(
 
         world.tick()  # tick so ego transform is settled
 
+        def _is_in_front(ego_transform, location: carla.Location, min_forward: float = 5.0) -> bool:
+            """True if location is ahead of ego (positive along vehicle forward, at least min_forward m)."""
+            fwd = ego_transform.get_forward_vector()
+            dx = location.x - ego_transform.location.x
+            dy = location.y - ego_transform.location.y
+            return dx * fwd.x + dy * fwd.y >= min_forward
+
         def _spawn_one_ped(ped_cfg):
-            """Spawn a single pedestrian relative to ego's current position."""
+            """Spawn a pedestrian in front of the vehicle on sidewalk or valid spawn."""
             ego_t = ego.get_transform()
             fwd = ego_t.get_forward_vector()
             right_x, right_y = -fwd.y, fwd.x
@@ -356,29 +450,57 @@ def run_single_scenario(
             )
 
             spawn_loc = None
+            min_forward = 5.0
+
+            # Prefer sidewalk/shoulder waypoint only if it stays in front
             waypoint = world.get_map().get_waypoint(
                 desired_loc, project_to_road=True,
                 lane_type=carla.LaneType.Sidewalk | carla.LaneType.Shoulder,
             )
             if waypoint is not None:
                 wp_loc = waypoint.transform.location
-                dx = wp_loc.x - desired_loc.x
-                dy = wp_loc.y - desired_loc.y
-                if math.sqrt(dx * dx + dy * dy) < 10.0:
-                    spawn_loc = wp_loc + carla.Location(z=0.5)
+                if _is_in_front(ego_t, wp_loc, min_forward):
+                    dx = wp_loc.x - desired_loc.x
+                    dy = wp_loc.y - desired_loc.y
+                    if math.sqrt(dx * dx + dy * dy) < 15.0:
+                        spawn_loc = wp_loc + carla.Location(z=0.5)
 
+            # Search along forward direction for sidewalk/shoulder
+            if spawn_loc is None:
+                for dist in (8, 10, 12, 15, 18, 20, 25):
+                    for lat in (0.0, -3.0, 3.0, -6.0, 6.0):
+                        cand = carla.Location(
+                            x=ego_t.location.x + fwd.x * dist + right_x * lat,
+                            y=ego_t.location.y + fwd.y * dist + right_y * lat,
+                            z=ego_t.location.z,
+                        )
+                        wp = world.get_map().get_waypoint(
+                            cand, project_to_road=True,
+                            lane_type=carla.LaneType.Sidewalk | carla.LaneType.Shoulder,
+                        )
+                        if wp is not None and _is_in_front(ego_t, wp.transform.location, min_forward):
+                            spawn_loc = wp.transform.location + carla.Location(z=0.5)
+                            break
+                    if spawn_loc is not None:
+                        break
+
+            # Fallback: use desired_loc with road z if it is in front
             if spawn_loc is None:
                 any_wp = world.get_map().get_waypoint(desired_loc, project_to_road=True)
-                if any_wp is not None:
+                if any_wp is not None and _is_in_front(ego_t, desired_loc, min_forward):
                     spawn_loc = carla.Location(
                         x=desired_loc.x, y=desired_loc.y,
                         z=any_wp.transform.location.z + 0.5,
                     )
-                else:
+                elif _is_in_front(ego_t, desired_loc, min_forward):
                     spawn_loc = carla.Location(
                         x=desired_loc.x, y=desired_loc.y,
                         z=ego_t.location.z + 0.5,
                     )
+
+            if spawn_loc is None:
+                logger.warning("  No in-front spawn found for pedestrian %d", ped_cfg.ped_id)
+                return
 
             spawn_transform = carla.Transform(
                 spawn_loc, carla.Rotation(yaw=float(rng.uniform(0, 360)))
@@ -391,7 +513,7 @@ def run_single_scenario(
             walker = world.try_spawn_actor(walker_bp, spawn_transform)
             if walker is None:
                 fallback_loc = world.get_random_location_from_navigation()
-                if fallback_loc is not None:
+                if fallback_loc is not None and _is_in_front(ego_t, fallback_loc, min_forward):
                     walker = world.try_spawn_actor(walker_bp, carla.Transform(
                         fallback_loc + carla.Location(z=0.5),
                         spawn_transform.rotation,
@@ -404,25 +526,41 @@ def run_single_scenario(
             actors_to_destroy.append(walker)
             ped_id_map[walker.id] = ped_cfg.ped_id
 
-            ctrl_bp = bp_lib.find("controller.ai.walker")
-            ctrl = world.spawn_actor(ctrl_bp, carla.Transform(), walker)
-            controllers.append((ctrl, ped_cfg))
-            actors_to_destroy.append(ctrl)
+            # Print spawn info (use spawn_transform — actor hasn't ticked yet)
+            mode = "DISTURBED" if ped_cfg.disturbed else "AI"
+            logger.info("  [%s] ped %d  pos=(%.1f, %.1f, %.1f)  yaw=%.1f°  "
+                        "θ_approach=%.1f°  v_init=%.2f m/s  (%d/%d)",
+                        mode, ped_cfg.ped_id,
+                        spawn_transform.location.x,
+                        spawn_transform.location.y,
+                        spawn_transform.location.z,
+                        spawn_transform.rotation.yaw,
+                        math.degrees(ped_cfg.theta_approach), ped_cfg.v_init,
+                        len(walkers), spec.n_ped)
 
-            # Need an extra tick so the controller registers, then start it
-            world.tick()
-            ctrl.start()
-            ctrl.set_max_speed(ped_cfg.v_init)
-            ctrl.go_to_location(ego.get_location())
-            logger.info("  Spawned ped %d at t=%.1fs (%d/%d)",
-                        ped_cfg.ped_id, sim_time, len(walkers), spec.n_ped)
+            if ped_cfg.disturbed:
+                walker_configs.append((walker, ped_cfg))
+            else:
+                ctrl_bp = bp_lib.find("controller.ai.walker")
+                ctrl = world.spawn_actor(ctrl_bp, carla.Transform(), walker)
+                ai_controllers.append((ctrl, ped_cfg))
+                actors_to_destroy.append(ctrl)
+                world.tick()
+                ctrl.start()
+                ctrl.set_max_speed(ped_cfg.v_init)
+                ctrl.go_to_location(ego.get_location())
 
-        # Spawn the first pedestrian immediately so the scene isn't empty
+        # Spawn at least two pedestrians before the scenario begins
         sim_time = 0.0
-        if spawn_queue:
-            _, first_cfg = spawn_queue[0]
-            _spawn_one_ped(first_cfg)
-            next_spawn_idx = 1
+        n_pre_spawn = min(2, len(spawn_queue))
+        for i in range(n_pre_spawn):
+            _, ped_cfg = spawn_queue[i]
+            _spawn_one_ped(ped_cfg)
+        next_spawn_idx = n_pre_spawn
+        # Brief settling so pre-spawned peds are active when scenario starts
+        settle_ticks = max(1, int(1.0 / dt))
+        for _ in range(settle_ticks):
+            world.tick()
 
         # ── Ego control: smooth PID speed controller ─────────────────────
         target_speed_ms = spec.v_ego_kmh / 3.6
@@ -448,37 +586,56 @@ def run_single_scenario(
                     _spawn_one_ped(ped_cfg)
                     next_spawn_idx += 1
 
-            # ── PID speed control ─────────────────────────────────────
-            if not emergency_active:
+            # ── PID speed control + traffic-law compliance ─────────────────
+            # Lane-following steering (always applied)
+            ego_ctrl = carla.VehicleControl()
+            ego_wp = world.get_map().get_waypoint(
+                ego.get_transform().location, project_to_road=True)
+            if ego_wp is not None:
+                wp_yaw = math.radians(ego_wp.transform.rotation.yaw)
+                ego_yaw = math.radians(ego.get_transform().rotation.yaw)
+                yaw_err = wp_yaw - ego_yaw
+                yaw_err = (yaw_err + math.pi) % (2 * math.pi) - math.pi
+                ego_ctrl.steer = max(-1.0, min(1.0, yaw_err * 2.0))
+
+            if emergency_active:
+                ego_ctrl.throttle = 0.0
+                ego_ctrl.brake = 1.0
+            else:
+                # PID for target speed (we stay under speed limit via --v-ego)
                 cur_v = ego.get_velocity()
                 cur_speed = math.sqrt(cur_v.x**2 + cur_v.y**2 + cur_v.z**2)
                 err = target_speed_ms - cur_speed
                 _speed_integral += err * dt
-                _speed_integral = max(-2.0, min(2.0, _speed_integral))  # anti-windup
+                _speed_integral = max(-2.0, min(2.0, _speed_integral))
                 derr = (err - _speed_prev_err) / dt
                 _speed_prev_err = err
                 pid_out = _kp * err + _ki * _speed_integral + _kd * derr
-                ego_ctrl = carla.VehicleControl()
                 if pid_out >= 0:
                     ego_ctrl.throttle = min(1.0, pid_out)
                     ego_ctrl.brake = 0.0
                 else:
                     ego_ctrl.throttle = 0.0
                     ego_ctrl.brake = min(1.0, -pid_out)
-                # Keep steering straight (follow lane)
-                ego_wp = world.get_map().get_waypoint(
-                    ego.get_transform().location, project_to_road=True)
-                if ego_wp is not None:
-                    wp_yaw = math.radians(ego_wp.transform.rotation.yaw)
-                    ego_yaw = math.radians(ego.get_transform().rotation.yaw)
-                    yaw_err = wp_yaw - ego_yaw
-                    # Normalise to [-pi, pi]
-                    yaw_err = (yaw_err + math.pi) % (2 * math.pi) - math.pi
-                    ego_ctrl.steer = max(-1.0, min(1.0, yaw_err * 2.0))
-                ego.apply_control(ego_ctrl)
+            ego.apply_control(ego_ctrl)
+
+            # Prescribed velocity for disturbed peds only (broadside crossing from τ)
+            ego_t = ego.get_transform()
+            fwd = ego_t.get_forward_vector()
+            for walker, ped_cfg in walker_configs:
+                # World-frame direction = ego forward rotated by θ^approach (radians)
+                c, s = math.cos(ped_cfg.theta_approach), math.sin(ped_cfg.theta_approach)
+                dx = fwd.x * c - fwd.y * s
+                dy = fwd.x * s + fwd.y * c
+                n = math.sqrt(dx * dx + dy * dy) or 1.0
+                dx, dy = dx / n, dy / n
+                wc = carla.WalkerControl()
+                wc.direction = carla.Vector3D(x=dx, y=dy, z=0.0)
+                wc.speed = ped_cfg.v_init
+                wc.jump = False
+                walker.apply_control(wc)
 
             # Ego state
-            ego_t = ego.get_transform()
             ego_v = ego.get_velocity()
             ego_pos = np.array([ego_t.location.x, ego_t.location.y])
             ego_vel = np.array([ego_v.x, ego_v.y])
@@ -568,8 +725,8 @@ def run_single_scenario(
             vid_writer.release()
             logger.info("  Video saved to %s", video_path)
 
-        # Stop controllers first
-        for ctrl, _ in controllers:
+        # Stop AI controllers first
+        for ctrl, _ in ai_controllers:
             try:
                 ctrl.stop()
             except Exception:
@@ -618,6 +775,21 @@ def main():
                         help="CARLA server port")
     parser.add_argument("--save-video", action="store_true",
                         help="Save per-frame PNGs for perception pipeline")
+    parser.add_argument("--disturbance", type=str, default="fuzzed",
+                        choices=["nominal", "fuzzed"],
+                        help="Disturbance profile for prescribed pedestrians "
+                             "(nominal: gentle crossings, rare failures; "
+                             "fuzzed: broadside crossings, frequent failures)")
+    parser.add_argument("--disturbed-frac", type=float, default=None,
+                        help="Override fraction of disturbed peds (0.0-1.0)")
+    parser.add_argument("--theta-min", type=float, default=None,
+                        help="Override min approach angle for disturbed peds (degrees)")
+    parser.add_argument("--theta-max", type=float, default=None,
+                        help="Override max approach angle for disturbed peds (degrees)")
+    parser.add_argument("--v-ped-min", type=float, default=None,
+                        help="Override min speed for disturbed peds (m/s)")
+    parser.add_argument("--v-ped-max", type=float, default=None,
+                        help="Override max speed for disturbed peds (m/s)")
     parser.add_argument("--output-dir", type=str, default="runs/carla_scenarios",
                         help="Output directory for results")
     args = parser.parse_args()
@@ -629,6 +801,26 @@ def main():
     server_version = client.get_server_version()
     logger.info("Connected. Server version: %s", server_version)
 
+    # ── Build disturbance profile ────────────────────────────────────────
+    profile = NOMINAL_DISTURBANCE if args.disturbance == "nominal" else FUZZED_DISTURBANCE
+    # Apply any per-field overrides
+    if args.disturbed_frac is not None:
+        profile = DisturbanceProfile(**{**asdict(profile), "disturbed_frac": args.disturbed_frac})
+    if args.theta_min is not None:
+        profile = DisturbanceProfile(**{**asdict(profile), "theta_min_deg": args.theta_min})
+    if args.theta_max is not None:
+        profile = DisturbanceProfile(**{**asdict(profile), "theta_max_deg": args.theta_max})
+    if args.v_ped_min is not None:
+        profile = DisturbanceProfile(**{**asdict(profile), "v_min": args.v_ped_min})
+    if args.v_ped_max is not None:
+        profile = DisturbanceProfile(**{**asdict(profile), "v_max": args.v_ped_max})
+
+    logger.info("Disturbance profile (%s): θ=[%.0f°,%.0f°]  v=[%.1f,%.1f] m/s  "
+                "frac=%.0f%%  d=[%.0f,%.0f] m",
+                args.disturbance, profile.theta_min_deg, profile.theta_max_deg,
+                profile.v_min, profile.v_max, profile.disturbed_frac * 100,
+                profile.d_spawn_min, profile.d_spawn_max)
+
     # ── Generate scenarios ───────────────────────────────────────────────
     specs = generate_scenario_specs(
         n_scenarios=args.n_scenarios,
@@ -637,6 +829,7 @@ def main():
         v_ego_kmh=args.v_ego,
         tau_safe=args.tau_safe,
         base_seed=args.seed,
+        disturbance=profile,
     )
 
     output_dir = Path(args.output_dir)
@@ -690,11 +883,11 @@ def main():
     logger.info("Results saved to %s", output_dir / "scenario_results.json")
 
     if args.save_video:
-        logger.info("Videos saved to %s/scenario_*/video.mp4", output_dir)
+        logger.info("Videos saved to %s/scenario_*/video.avi", output_dir)
         logger.info(
             "\nNext step: run perception on saved video:\n"
             "  python perception/detect_dual_tracking.py \\\n"
-            "    --source runs/carla_scenarios/scenario_000/video.mp4 \\\n"
+            "    --source runs/carla_scenarios/scenario_000/video.avi \\\n"
             "    --weights perception/yolov9/weights/yolov9-c.pt \\\n"
             "    --save_plot_name scenario_000"
         )
