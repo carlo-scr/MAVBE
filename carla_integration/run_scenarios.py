@@ -118,10 +118,13 @@ FUZZED_DISTURBANCE = DisturbanceProfile(
 class PedestrianConfig:
     """Per-pedestrian disturbance vector τ_i."""
     ped_id: int
-    d_spawn: float          # metres from ego path
+    d_spawn: float          # metres from ego path (used only when no explicit spawn_xyz)
     theta_approach: float   # radians relative to ego heading
     v_init: float           # m/s
     disturbed: bool = False # True → prescribed broadside crossing via WalkerControl
+    spawn_x: Optional[float] = None  # absolute world x (if provided)
+    spawn_y: Optional[float] = None  # absolute world y
+    spawn_z: Optional[float] = None  # absolute world z
 
 
 @dataclass
@@ -224,13 +227,19 @@ def generate_scenario_specs(
     tau_safe: float = 2.0,
     base_seed: int = 42,
     disturbance: Optional[DisturbanceProfile] = None,
+    spawn_locations: Optional[List[Tuple[float, float, float]]] = None,
+    spawn_jitter: float = 1.0,
 ) -> List[ScenarioSpec]:
     """Generate N scenario specifications.
 
     Args:
         disturbance: Disturbance profile for non-AI (prescribed) pedestrians.
-                     Defaults to FUZZED_DISTURBANCE.  Pass NOMINAL_DISTURBANCE
-                     for a baseline where crossings are gentler and failures rare.
+                     Defaults to FUZZED_DISTURBANCE.
+        spawn_locations: List of (x, y, z) base positions for pedestrians.
+                         Each scenario Monte-Carlos the position ± spawn_jitter metres.
+                         n_ped is clamped to len(spawn_locations) when provided.
+        spawn_jitter: Uniform jitter radius in metres applied to each base
+                      position per scenario (default ±1.0 m in x and y).
 
     Normal (AI-controlled) pedestrians always use:
         θ^approach ∈ [-45°, 45°] (within camera FOV), v_init ∈ [0.5, 2.0] m/s.
@@ -239,6 +248,9 @@ def generate_scenario_specs(
     """
     if disturbance is None:
         disturbance = FUZZED_DISTURBANCE
+
+    if spawn_locations is not None:
+        n_ped = min(n_ped, len(spawn_locations))
 
     rng = np.random.default_rng(base_seed)
     specs = []
@@ -252,6 +264,15 @@ def generate_scenario_specs(
         disturbed_ids = set(ped_rng.choice(n_ped, size=n_disturbed, replace=False))
 
         for j in range(n_ped):
+            # Spawn position: explicit base + jitter, or ego-relative
+            if spawn_locations is not None:
+                bx, by, bz = spawn_locations[j]
+                sx = float(bx + ped_rng.uniform(-spawn_jitter, spawn_jitter))
+                sy = float(by + ped_rng.uniform(-spawn_jitter, spawn_jitter))
+                sz = float(bz)
+            else:
+                sx, sy, sz = None, None, None
+
             if j in disturbed_ids:
                 d_spawn = float(ped_rng.uniform(disturbance.d_spawn_min, disturbance.d_spawn_max))
                 theta_approach = math.radians(float(
@@ -261,14 +282,15 @@ def generate_scenario_specs(
                 peds.append(PedestrianConfig(
                     ped_id=j, d_spawn=d_spawn, theta_approach=theta_approach,
                     v_init=v_init, disturbed=True,
+                    spawn_x=sx, spawn_y=sy, spawn_z=sz,
                 ))
             else:
-                # Normal: within camera FOV, moderate speed, AI controller
                 d_spawn = float(ped_rng.uniform(8, 20))
                 theta_approach = float(ped_rng.uniform(-math.pi / 4, math.pi / 4))
                 peds.append(PedestrianConfig(
                     ped_id=j, d_spawn=d_spawn, theta_approach=theta_approach,
                     v_init=float(ped_rng.uniform(0.5, 2.0)), disturbed=False,
+                    spawn_x=sx, spawn_y=sy, spawn_z=sz,
                 ))
 
         specs.append(ScenarioSpec(
@@ -435,19 +457,26 @@ def run_single_scenario(
             return dx * fwd.x + dy * fwd.y >= min_forward
 
         def _spawn_one_ped(ped_cfg):
-            """Spawn a pedestrian in front of the vehicle on sidewalk or valid spawn."""
+            """Spawn a pedestrian at explicit (x,y,z) or in front of ego via d_spawn/theta."""
             ego_t = ego.get_transform()
             fwd = ego_t.get_forward_vector()
             right_x, right_y = -fwd.y, fwd.x
 
-            offset_fwd = ped_cfg.d_spawn * math.cos(ped_cfg.theta_approach)
-            offset_lat = ped_cfg.d_spawn * math.sin(ped_cfg.theta_approach)
-
-            desired_loc = carla.Location(
-                x=ego_t.location.x + fwd.x * offset_fwd + right_x * offset_lat,
-                y=ego_t.location.y + fwd.y * offset_fwd + right_y * offset_lat,
-                z=ego_t.location.z,
-            )
+            # ── Determine desired location ───────────────────────────────
+            if ped_cfg.spawn_x is not None:
+                # Explicit world coordinates (already jittered in generate_scenario_specs)
+                desired_loc = carla.Location(
+                    x=ped_cfg.spawn_x, y=ped_cfg.spawn_y, z=ped_cfg.spawn_z,
+                )
+            else:
+                # Ego-relative from d_spawn / theta_approach
+                offset_fwd = ped_cfg.d_spawn * math.cos(ped_cfg.theta_approach)
+                offset_lat = ped_cfg.d_spawn * math.sin(ped_cfg.theta_approach)
+                desired_loc = carla.Location(
+                    x=ego_t.location.x + fwd.x * offset_fwd + right_x * offset_lat,
+                    y=ego_t.location.y + fwd.y * offset_fwd + right_y * offset_lat,
+                    z=ego_t.location.z,
+                )
 
             spawn_loc = None
             min_forward = 5.0
@@ -465,7 +494,13 @@ def run_single_scenario(
                     if math.sqrt(dx * dx + dy * dy) < 15.0:
                         spawn_loc = wp_loc + carla.Location(z=0.5)
 
-            # Search along forward direction for sidewalk/shoulder
+            # For explicit coords: use desired_loc directly if sidewalk snap failed
+            if spawn_loc is None and ped_cfg.spawn_x is not None:
+                any_wp = world.get_map().get_waypoint(desired_loc, project_to_road=True)
+                z = any_wp.transform.location.z + 0.5 if any_wp else desired_loc.z + 0.5
+                spawn_loc = carla.Location(x=desired_loc.x, y=desired_loc.y, z=z)
+
+            # For ego-relative: search along forward direction for sidewalk/shoulder
             if spawn_loc is None:
                 for dist in (8, 10, 12, 15, 18, 20, 25):
                     for lat in (0.0, -3.0, 3.0, -6.0, 6.0):
@@ -499,7 +534,7 @@ def run_single_scenario(
                     )
 
             if spawn_loc is None:
-                logger.warning("  No in-front spawn found for pedestrian %d", ped_cfg.ped_id)
+                logger.warning("  No valid spawn found for pedestrian %d", ped_cfg.ped_id)
                 return
 
             spawn_transform = carla.Transform(
@@ -513,7 +548,7 @@ def run_single_scenario(
             walker = world.try_spawn_actor(walker_bp, spawn_transform)
             if walker is None:
                 fallback_loc = world.get_random_location_from_navigation()
-                if fallback_loc is not None and _is_in_front(ego_t, fallback_loc, min_forward):
+                if fallback_loc is not None:
                     walker = world.try_spawn_actor(walker_bp, carla.Transform(
                         fallback_loc + carla.Location(z=0.5),
                         spawn_transform.rotation,
@@ -790,6 +825,13 @@ def main():
                         help="Override min speed for disturbed peds (m/s)")
     parser.add_argument("--v-ped-max", type=float, default=None,
                         help="Override max speed for disturbed peds (m/s)")
+    parser.add_argument("--spawn-locations", type=str, default=None,
+                        help="JSON file with pedestrian base positions: "
+                             '[[x1,y1,z1], [x2,y2,z2], ...]. '
+                             "n_ped is clamped to the number of entries.")
+    parser.add_argument("--spawn-jitter", type=float, default=1.0,
+                        help="Uniform ± jitter in metres applied to each base "
+                             "spawn position per scenario (default: 1.0)")
     parser.add_argument("--output-dir", type=str, default="runs/carla_scenarios",
                         help="Output directory for results")
     args = parser.parse_args()
@@ -821,6 +863,14 @@ def main():
                 profile.v_min, profile.v_max, profile.disturbed_frac * 100,
                 profile.d_spawn_min, profile.d_spawn_max)
 
+    # ── Load spawn locations (if provided) ──────────────────────────────
+    spawn_locs = None
+    if args.spawn_locations is not None:
+        with open(args.spawn_locations) as f:
+            spawn_locs = [tuple(p) for p in json.load(f)]
+        logger.info("Loaded %d spawn locations from %s (jitter=±%.1f m)",
+                     len(spawn_locs), args.spawn_locations, args.spawn_jitter)
+
     # ── Generate scenarios ───────────────────────────────────────────────
     specs = generate_scenario_specs(
         n_scenarios=args.n_scenarios,
@@ -830,6 +880,8 @@ def main():
         tau_safe=args.tau_safe,
         base_seed=args.seed,
         disturbance=profile,
+        spawn_locations=spawn_locs,
+        spawn_jitter=args.spawn_jitter,
     )
 
     output_dir = Path(args.output_dir)
