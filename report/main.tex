@@ -96,14 +96,12 @@ Our system, \textsc{Simplex-Track}, integrates:
     \item A \textbf{deterministic emergency braking controller} as the verified baseline.
 \end{enumerate}
 
-Our contributions map directly to the textbook's validation framework:
+Our contributions are:
 \begin{enumerate}
-    \item \textbf{System Model} (Ch.~2): Formal stochastic system definition with CT-model EKF dynamics and social force interactions.
-    \item \textbf{Safety Specification} (Ch.~3): STL safety property with quantitative robustness metrics.
-    \item \textbf{Falsification} (Ch.~4--5): Optimization-based search via CMA-ES for worst-case pedestrian configurations.
-    \item \textbf{Failure Distribution} (Ch.~6): MCMC characterization of failure-inducing parameter regions.
-    \item \textbf{Failure Probability} (Ch.~7): Importance sampling and cross-entropy estimation with Bayesian credible intervals.
-    \item \textbf{Runtime Monitoring} (Ch.~12): ODD monitoring, uncertainty quantification, and Simplex architecture.
+    \item \textbf{Formal system model} with CT-model EKF dynamics augmented by social force interactions, and an STL safety specification with quantitative robustness metrics.
+    \item \textbf{Falsification and failure characterization}: optimization-based search via CMA-ES for worst-case pedestrian configurations, and Metropolis--Hastings MCMC to characterize the failure distribution.
+    \item \textbf{Failure probability estimation} via importance sampling and the cross-entropy method, with Bayesian credible intervals.
+    \item \textbf{Runtime monitoring} through a Simplex architecture with ODD monitoring and uncertainty quantification.
 \end{enumerate}
 
 % ============================================================
@@ -112,7 +110,7 @@ Our contributions map directly to the textbook's validation framework:
 \section{System Model}
 \label{sec:system}
 
-Following Kochenderfer et al.~\cite{kochenderfer2025validation}, Ch.~2, we formalize the tracking system as a discrete-time stochastic process.
+We formalize the tracking system as a discrete-time stochastic process following~\cite{kochenderfer2025validation}.
 
 \subsection{State and Observation Spaces}
 
@@ -201,7 +199,7 @@ Under the nominal distribution $p(\boldsymbol{\tau})$, pedestrians are uniformly
 \section{Safety Property Specification}
 \label{sec:stl}
 
-Following Kochenderfer et al.~\cite{kochenderfer2025validation}, Ch.~3, we specify safety properties using Signal Temporal Logic (STL)~\cite{maler2004stl} with quantitative robustness semantics~\cite{donze2010robust}.
+We specify safety properties using Signal Temporal Logic (STL)~\cite{maler2004stl} with quantitative robustness semantics~\cite{donze2010robust}.
 
 \subsection{Time-To-Collision}
 
@@ -247,7 +245,7 @@ These complement the safety metric by quantifying prediction quality.
 \section{Falsification and Failure Analysis}
 \label{sec:falsification}
 
-We follow the falsification methodology from Kochenderfer et al.~\cite{kochenderfer2025validation}, Ch.~4--6 and Corso et al.~\cite{corso2021survey}, applying increasingly sophisticated methods to discover and characterize failures.
+We apply increasingly sophisticated methods to discover and characterize failures, following~\cite{kochenderfer2025validation} and Corso et al.~\cite{corso2021survey}.
 
 \subsection{Direct Monte Carlo Simulation}
 \label{sec:direct_mc}
@@ -274,7 +272,7 @@ The CV baseline exhibits $\hat{p}_{\text{fail}}^{\text{CV}} = 0.164$, confirming
 \subsection{Optimization-Based Falsification}
 \label{sec:falsification_opt}
 
-Following Ch.~4 of~\cite{kochenderfer2025validation}, we formulate falsification as an optimization problem over the disturbance space:
+We formulate falsification as an optimization problem over the disturbance space:
 \begin{equation}
     \boldsymbol{\tau}^* = \arg\min_{\boldsymbol{\tau}} \;\rho_{\min}(\boldsymbol{\tau})
     \label{eq:falsification_opt}
@@ -288,7 +286,7 @@ This identifies the \emph{critical failure mode}: close-range pedestrians approa
 \subsection{Failure Distribution Characterization via MCMC}
 \label{sec:mcmc}
 
-To characterize the \emph{distribution} of failure-inducing scenarios, we apply Metropolis--Hastings MCMC~\cite{metropolis1953equation, hastings1970monte} following Ch.~6 of~\cite{kochenderfer2025validation}.
+To characterize the \emph{distribution} of failure-inducing scenarios, we apply Metropolis--Hastings MCMC~\cite{metropolis1953equation, hastings1970monte}.
 
 The target distribution is the conditional failure distribution:
 \begin{equation}
@@ -310,7 +308,7 @@ The failure density concentrates in the region $d^{\text{spawn}} \in [5, 14]$\,m
 \begin{figure}[!t]
     \centering
     \input{figures/failure_distribution.tex}
-    \caption{MCMC failure samples in $(d^{\text{spawn}}, \theta^{\text{approach}})$ space. Following Kochenderfer et al.~\cite{kochenderfer2025validation}, Ch.~6, the Metropolis--Hastings chain concentrates in the close-range, broadside-approach region where the SF-EKF is most vulnerable.}
+    \caption{MCMC failure samples in $(d^{\text{spawn}}, \theta^{\text{approach}})$ space. The Metropolis--Hastings chain concentrates in the close-range, broadside-approach region where the SF-EKF is most vulnerable.}
     \label{fig:failure_dist}
 \end{figure}
 
@@ -321,7 +319,7 @@ The failure density concentrates in the region $d^{\text{spawn}} \in [5, 14]$\,m
 \label{sec:failure_prob}
 
 The rare-event nature of collisions ($p_{\text{fail}} \approx 0.08$ under nominal conditions) makes direct Monte Carlo inefficient for precise estimation.
-Following Ch.~7 of~\cite{kochenderfer2025validation}, we apply importance sampling and the cross-entropy method to reduce variance.
+We apply importance sampling and the cross-entropy method~\cite{kochenderfer2025validation} to reduce variance.
 
 \subsection{Direct Bayesian Estimation}
 \label{sec:bayesian}
@@ -341,14 +339,14 @@ Fig.~\ref{fig:bayesian} shows the posterior distribution.
 \begin{figure}[!t]
     \centering
     \input{figures/bayesian_posterior.tex}
-    \caption{Bayesian posterior $\mathrm{Beta}(44, 521)$ on $p_{\text{fail}}$ with 95\% credible interval (red bracket). The prior $\mathrm{Beta}(5, 60)$ (dashed mauve) is updated by $39$ observed failures in $500$ trials, following the Bayesian estimation framework of~\cite{kochenderfer2025validation}, Ch.~7.}
+    \caption{Bayesian posterior $\mathrm{Beta}(44, 521)$ on $p_{\text{fail}}$ with 95\% credible interval (red bracket). The prior $\mathrm{Beta}(5, 60)$ (dashed mauve) is updated by $39$ observed failures in $500$ trials.}
     \label{fig:bayesian}
 \end{figure}
 
 \subsection{Importance Sampling}
 \label{sec:importance_sampling}
 
-Following \cite{kochenderfer2025validation}, Ch.~7.2, we construct a proposal distribution $q(\boldsymbol{\tau})$ that over-samples the failure region identified by MCMC (Section~\ref{sec:mcmc}):
+We construct a proposal distribution $q(\boldsymbol{\tau})$ that over-samples the failure region identified by MCMC (Section~\ref{sec:mcmc}):
 \begin{equation}
     q(\boldsymbol{\tau}) = \mathcal{N}\!\left(\boldsymbol{\mu}_q, \boldsymbol{\Sigma}_q\right), \quad \boldsymbol{\mu}_q = \begin{bmatrix} 10 \\ 85 \\ 1.5 \end{bmatrix}, \; \boldsymbol{\Sigma}_q = \mathrm{diag}(4^2, 20^2, 0.3^2)
 \end{equation}
@@ -369,7 +367,7 @@ This represents a variance reduction factor of $5.2\times$.
 \subsection{Cross-Entropy Method}
 \label{sec:cross_entropy}
 
-Following~\cite{kochenderfer2025validation}, Ch.~7.3 and Rubinstein~\cite{rubinstein1999crossentropy, rubinstein2004crossentropy}, we iteratively adapt the proposal distribution to minimize the KL divergence to the optimal IS distribution.
+Following Rubinstein~\cite{rubinstein1999crossentropy, rubinstein2004crossentropy}, we iteratively adapt the proposal distribution to minimize the KL divergence to the optimal IS distribution.
 
 At each iteration $\ell$:
 \begin{enumerate}
@@ -384,7 +382,7 @@ Fig.~\ref{fig:is_convergence} compares convergence across all three methods.
 \begin{figure}[!t]
     \centering
     \input{figures/importance_sampling.tex}
-    \caption{Convergence of $\hat{p}_{\text{fail}}$ vs.\ number of samples for Direct MC, Importance Sampling, and Cross-Entropy methods. IS and CE converge within $\sim$400 samples, while Direct MC requires $>3000$. Following~\cite{kochenderfer2025validation}, Ch.~7.}
+    \caption{Convergence of $\hat{p}_{\text{fail}}$ vs.\ number of samples for Direct MC, Importance Sampling, and Cross-Entropy methods. IS and CE converge within $\sim$400 samples, while Direct MC requires $>3000$.}
     \label{fig:is_convergence}
 \end{figure}
 
@@ -395,12 +393,12 @@ Fig.~\ref{fig:is_convergence} compares convergence across all three methods.
 \label{sec:runtime}
 
 The validation analysis above characterizes system-level failure behavior offline.
-As an additional safety layer, we implement runtime monitoring following Ch.~12 of~\cite{kochenderfer2025validation}, using the Simplex Architecture~\cite{sha2001simplex, bak2014simplex}.
+As an additional safety layer, we implement runtime monitoring using the Simplex Architecture~\cite{sha2001simplex, bak2014simplex}.
 
 \subsection{Operational Design Domain Monitoring}
 \label{sec:odd}
 
-Following Ch.~12.1 of~\cite{kochenderfer2025validation}, we define the Operational Design Domain (ODD) as the set of conditions under which the SF-EKF is validated:
+We define the Operational Design Domain (ODD) as the set of conditions under which the SF-EKF is validated:
 \begin{equation}
     \text{ODD} = \{N_{\text{ped}} \leq N_{\max},\; v_{\text{ego}} \in [0, v_{\max}],\; \text{visibility} \geq V_{\min}\}
 \end{equation}
@@ -411,7 +409,7 @@ An ODD violation triggers a conservative speed reduction.
 \subsection{Uncertainty Quantification}
 \label{sec:uq}
 
-Following Ch.~12.2 of~\cite{kochenderfer2025validation}, we leverage the EKF covariance $\mathbf{P}_{k|k}$ as a real-time uncertainty measure:
+We leverage the EKF covariance $\mathbf{P}_{k|k}$ as a real-time uncertainty measure:
 \begin{equation}
     u_k^{(i)} = \mathrm{tr}\!\left(\mathbf{P}_{k|k}^{(i)}[0:2, 0:2]\right)
     \label{eq:uncertainty}
@@ -513,7 +511,7 @@ The Simplex monitor triggers at $\mathrm{TTC} = \tau_{\text{safe}}$ and arrests 
 \begin{figure}[!t]
     \centering
     \input{figures/stl_robustness.tex}
-    \caption{TTC time series for a representative scenario. The CV baseline (terracotta) enters the STL violation region ($\mathrm{TTC} < \tau_{\text{safe}}$, shaded). The SF-EKF + Simplex system (teal) triggers emergency braking at the threshold, preventing violation. Robustness annotation following~\cite{kochenderfer2025validation}, Ch.~3.}
+    \caption{TTC time series for a representative scenario. The CV baseline (terracotta) enters the STL violation region ($\mathrm{TTC} < \tau_{\text{safe}}$, shaded). The SF-EKF + Simplex system (teal) triggers emergency braking at the threshold, preventing violation. }
     \label{fig:stl_robustness}
 \end{figure}
 
@@ -617,30 +615,6 @@ In the \emph{high-density} regime, the social force model's pairwise interaction
 % ============================================================
 \section{Discussion}
 \label{sec:discussion}
-
-\subsection{Connection to Course Methods}
-
-Table~\ref{tab:course_map} provides an explicit mapping between our analysis and the textbook chapters.
-This structure was chosen to demonstrate that the full validation pipeline---from system modeling through runtime monitoring---can be systematically applied to perception-level components, not just control-level systems.
-
-\begin{table}[!t]
-    \centering
-    \caption{Mapping of our analysis to the textbook~\cite{kochenderfer2025validation}.}
-    \label{tab:course_map}
-    \renewcommand{\arraystretch}{1.15}
-    \begin{tabular}{l l l}
-        \toprule
-        \textbf{Chapter} & \textbf{Topic} & \textbf{Our Application} \\
-        \midrule
-        Ch.~2 & System Modeling & CT-EKF + Social Force \\
-        Ch.~3 & Property Spec. & STL: $\varphi_{\text{safe}}$, robustness $\rho$ \\
-        Ch.~4--5 & Falsification & CMA-ES on $\boldsymbol{\tau}$ \\
-        Ch.~6 & Failure Dist. & MH-MCMC sampling \\
-        Ch.~7 & Failure Prob. & IS, CE, Beta posterior \\
-        Ch.~12 & Runtime Mon. & TTC Simplex + ODD \\
-        \bottomrule
-    \end{tabular}
-\end{table}
 
 \subsection{Key Insights}
 
