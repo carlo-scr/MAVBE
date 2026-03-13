@@ -30,7 +30,7 @@ Usage:
     python -m carla_integration.run_scenarios --n-scenarios 10
     python -m carla_integration.run_scenarios --n-scenarios 10 --disturbance nominal
     python -m carla_integration.run_scenarios --n-scenarios 10 --disturbance fuzzed
-    python -m carla_integration.run_scenarios --n-scenarios 10 --n-ped 7 --tracker sfekf_simplex
+    python -m carla_integration.run_scenarios --n-scenarios 10 --n-ped 7 --tracker sf_ct_ekf_simplex
     python -m carla_integration.run_scenarios --n-scenarios 10 --save-video
 
 Requires:
@@ -146,7 +146,7 @@ class ScenarioSpec:
     """Full specification for one CARLA scenario."""
     scenario_id: int
     n_ped: int
-    tracker: str            # "cv", "sfekf", "sfekf_simplex"
+    tracker: str            # "cv_kf", "sf_ct_ekf", "sf_ct_ekf_simplex", etc.
     v_ego_kmh: float
     tau_safe: float
     seed: int
@@ -369,7 +369,7 @@ class SmartNoiseSensor:
 def generate_scenario_specs(
     n_scenarios: int = 10,
     n_ped: int = 5,
-    tracker: str = "sfekf",
+    tracker: str = "sf_ct_ekf",
     v_ego_kmh: float = 10.0,
     tau_safe: float = 2.0,
     base_seed: int = 42,
@@ -584,10 +584,10 @@ def run_single_scenario(
             with _cam_lock:
                 if len(_cam_buffers) < 4:
                     return
-                front = _cam_buffers["front"]
-                right = _cam_buffers["right"]
-                rear  = _cam_buffers["rear"]
-                left  = _cam_buffers["left"]
+                front = _cam_buffers["front"].copy()
+                right = _cam_buffers["right"].copy()
+                rear  = _cam_buffers["rear"].copy()
+                left  = _cam_buffers["left"].copy()
 
             label_h = 30
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -718,7 +718,7 @@ def run_single_scenario(
         tracker = create_tracker(spec.tracker, dt, tau_safe=spec.tau_safe)
         braking_active = False
         brake_hold_counter = 0
-        BRAKE_HOLD_STEPS = 5  # hold brake ≥ 0.25 s to avoid chatter
+        BRAKE_HOLD_STEPS = 40  # hold brake ≥ 2.0 s after last tracker brake command
 
         # ── ADE/FDE accumulators ──────────────────────────────────────────
         _ade_errors: List[float] = []
@@ -734,9 +734,11 @@ def run_single_scenario(
 
         # ── Main simulation loop ─────────────────────────────────────────
         n_steps = int(t_max / dt)
+        POST_COLLISION_S = 5.0
+        max_steps = n_steps + int(POST_COLLISION_S / dt)
 
         t0_wall = time.time()
-        for step in range(n_steps):
+        for step in range(max_steps):
             world.tick()
             _write_composite_frame()
             sim_time = (step + 1) * dt
@@ -763,6 +765,7 @@ def run_single_scenario(
             SF_B = 0.3    # range scale (m)
             SF_R = 0.5    # pedestrian radius (m)
             SF_CLAMP = 3.0  # max force magnitude to avoid instability
+            EGO_RADIUS = 2.0  # effective ego vehicle radius for repulsion
 
             fwd = ego_t.get_forward_vector()
             ped_positions = {}
@@ -791,6 +794,15 @@ def run_single_scenario(
                     n_ij = diff / dist
                     magnitude = SF_A * math.exp((2.0 * SF_R - dist) / SF_B)
                     sf += magnitude * n_ij
+
+                # Repulsion from the ego vehicle (larger radius)
+                diff_ego = pi - ego_pos
+                dist_ego = np.linalg.norm(diff_ego)
+                if dist_ego > 1e-3 and dist_ego < 8.0:
+                    n_ego = diff_ego / dist_ego
+                    overlap_ego = SF_R + EGO_RADIUS - dist_ego
+                    mag_ego = SF_A * math.exp(overlap_ego / SF_B)
+                    sf += mag_ego * n_ego
 
                 sf_mag = np.linalg.norm(sf)
                 if sf_mag > SF_CLAMP:
@@ -850,6 +862,23 @@ def run_single_scenario(
                                        "dist=%.2f m  (no brake active)  "
                                        "ego_speed=%.1f km/h",
                                        sim_time, pid, dist, ego_speed)
+
+            # Also check CARLA physics collision sensor (fires on actual contact)
+            if not result.collision and collision_events:
+                ped_hits = [e for e in collision_events
+                            if "walker" in e.get("other_type", "")]
+                if ped_hits:
+                    hit = ped_hits[0]
+                    cpid = ped_id_map.get(hit["other_id"], -1)
+                    result.collision = True
+                    result.collision_time = sim_time
+                    result.collision_ped_id = cpid
+                    result.collision_despite_brake = braking_active
+                    logger.warning("    t=%.2fs  PHYSICS COLLISION with ped %d  "
+                                   "(CARLA sensor)  brake=%s  ego_speed=%.1f km/h",
+                                   sim_time, cpid,
+                                   "ACTIVE" if braking_active else "off",
+                                   ego_speed)
 
             result.min_ttc = min(result.min_ttc, step_min_ttc)
             result.ttc_trace.append(round(step_min_ttc, 4))
@@ -912,11 +941,11 @@ def run_single_scenario(
                 yaw_err = (yaw_err + math.pi) % (2 * math.pi) - math.pi
                 ego_ctrl.steer = max(-1.0, min(1.0, yaw_err * 2.0))
 
-            # Braking decision from tracker with hold to avoid chatter
+            # Braking decision from tracker with hold to avoid chatter.
+            # Release requires BOTH: hold timer expired AND GT TTC safe.
             if tracker_out.brake:
                 if not braking_active:
                     result.simplex_activations += 1
-                    # Log each brake activation with reason and involved peds
                     ped_ids = [e.ped_id for e in tracker_out.events]
                     min_dists = [e.min_pred_dist for e in tracker_out.events
                                  if e.reason == "prediction_intersect"]
@@ -978,11 +1007,12 @@ def run_single_scenario(
                             ego_ctrl.throttle, ego_ctrl.brake,
                             n_tracks)
 
-            # ── Early termination 5 s after collision ─────────────────────
-            POST_COLLISION_S = 5.0
+            # ── Early termination: 5 s after collision, or t_max if no collision
             if result.collision and (sim_time - result.collision_time) >= POST_COLLISION_S:
                 logger.info("    Ending scenario — %.1fs after collision at t=%.2fs",
                             POST_COLLISION_S, result.collision_time)
+                break
+            if not result.collision and step >= n_steps - 1:
                 break
 
         # ── Compute ADE / FDE ─────────────────────────────────────────────
@@ -1034,9 +1064,12 @@ def run_single_scenario(
             except Exception:
                 pass
 
-        # Restore original settings
+        # Always disable synchronous mode so server doesn't freeze if we crash
         try:
-            world.apply_settings(original_settings)
+            s = world.get_settings()
+            s.synchronous_mode = False
+            s.fixed_delta_seconds = None
+            world.apply_settings(s)
         except Exception:
             pass
 
@@ -1055,9 +1088,10 @@ def main():
                         help="Number of scenarios to run (default: 10)")
     parser.add_argument("--n-ped", type=int, default=5,
                         help="Number of pedestrians per scenario (default: 5)")
-    parser.add_argument("--tracker", type=str, default="sfekf",
-                        choices=["cv", "sfekf", "sfekf_simplex"],
-                        help="Tracker configuration (default: sfekf)")
+    parser.add_argument("--tracker", type=str, default="sf_ct_ekf",
+                        choices=["cv_kf", "sf_ct_ekf", "sf_ct_ekf_simplex",
+                                 "sf_cv_ekf", "sf_cv_ekf_simplex"],
+                        help="Tracker configuration (default: sf_ct_ekf)")
     parser.add_argument("--v-ego", type=float, default=10.0,
                         help="Ego speed in km/h (default: 10)")
     parser.add_argument("--tau-safe", type=float, default=2.0,
@@ -1099,32 +1133,34 @@ def main():
                              "spawn position per scenario (default: 1.0)")
     parser.add_argument("--output-dir", type=str, default="runs/carla_scenarios",
                         help="Output directory for results")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Suppress per-step logging (only show summary)")
     args = parser.parse_args()
+
+    if args.quiet:
+        logging.getLogger(__name__).setLevel(logging.WARNING)
+        logging.getLogger("carla_integration.online_trackers").setLevel(logging.WARNING)
 
     # ── Connect to CARLA ─────────────────────────────────────────────────
     logger.info("Connecting to CARLA at %s:%d ...", args.host, args.port)
     client = carla.Client(args.host, args.port)
-    client.set_timeout(10.0)
-
-    # Recover from a previous crash that left synchronous mode on:
-    # disable sync mode so the server can respond, then reconnect.
-    try:
-        server_version = client.get_server_version()
-    except RuntimeError:
-        logger.warning("Initial connection timed out — attempting sync-mode recovery ...")
-        try:
-            world = client.get_world()
-            s = world.get_settings()
-            s.synchronous_mode = False
-            s.fixed_delta_seconds = None
-            world.apply_settings(s)
-            logger.info("  Disabled synchronous mode. Retrying connection ...")
-        except Exception:
-            pass
-        client.set_timeout(30.0)
-        server_version = client.get_server_version()
-
     client.set_timeout(60.0)
+
+    # Always try to disable synchronous mode first, in case a previous crash
+    # left the server stuck waiting for tick() calls.
+    try:
+        _w = client.get_world()
+        _s = _w.get_settings()
+        if _s.synchronous_mode:
+            logger.warning("CARLA was stuck in synchronous mode — disabling ...")
+            _s.synchronous_mode = False
+            _s.fixed_delta_seconds = None
+            _w.apply_settings(_s)
+            time.sleep(1.0)
+    except Exception:
+        pass
+
+    server_version = client.get_server_version()
     logger.info("Connected. Server version: %s", server_version)
 
     # ── Build disturbance profile ────────────────────────────────────────
@@ -1206,6 +1242,22 @@ def main():
     all_results = []
     n_collisions = 0
     t0 = time.time()
+
+    def _ensure_async_mode():
+        """Safety net: always restore CARLA to async mode on exit."""
+        try:
+            w = client.get_world()
+            s = w.get_settings()
+            if s.synchronous_mode:
+                s.synchronous_mode = False
+                s.fixed_delta_seconds = None
+                w.apply_settings(s)
+                logger.info("Restored CARLA to asynchronous mode.")
+        except Exception:
+            pass
+
+    import atexit
+    atexit.register(_ensure_async_mode)
 
     for i, spec in enumerate(specs):
         logger.info("═══ Scenario %d/%d (seed=%d, n_ped=%d, tracker=%s) ═══",

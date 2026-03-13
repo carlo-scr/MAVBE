@@ -56,7 +56,7 @@ class ScenarioConfig:
     """Full scenario parameterisation."""
     n_ped: int = 5
     pedestrians: Optional[List[PedestrianParams]] = None
-    tracker: str = "sfekf"          # "cv", "sfekf", "sfekf_simplex"
+    tracker: str = "sf_ct_ekf"      # "cv_kf", "sf_ct_ekf", "sf_ct_ekf_simplex"
     v_ego_kmh: float = 20.0
     tau_safe: float = 2.0           # seconds
     a_max: float = 8.0              # m/s²  (emergency braking decel)
@@ -143,9 +143,9 @@ def compute_ttc(ego_pos: np.ndarray, ego_vel: np.ndarray,
 # disturbance risk score so that Monte Carlo sampling reproduces the
 # paper numbers (within statistical noise).
 _TARGET_RATES = {
-    "cv":              {3: 0.082, 5: 0.164, 7: 0.278, 10: 0.412},
-    "sfekf":           {3: 0.031, 5: 0.078, 7: 0.146, 10: 0.243},
-    "sfekf_simplex":   {3: 0.008, 5: 0.021, 7: 0.053, 10: 0.117},
+    "cv_kf":              {3: 0.082, 5: 0.164, 7: 0.278, 10: 0.412},
+    "sf_ct_ekf":          {3: 0.031, 5: 0.078, 7: 0.146, 10: 0.243},
+    "sf_ct_ekf_simplex":  {3: 0.008, 5: 0.021, 7: 0.053, 10: 0.117},
 }
 
 
@@ -161,7 +161,7 @@ def _ped_risk_score(d_spawn: float, theta_approach: float,
 
 def _interp_rate(n_ped: int, tracker: str) -> float:
     """Linearly interpolate target collision rate for a given density."""
-    rates = _TARGET_RATES.get(tracker, _TARGET_RATES["sfekf"])
+    rates = _TARGET_RATES.get(tracker, _TARGET_RATES["sf_ct_ekf"])
     keys = sorted(rates.keys())
     if n_ped <= keys[0]:
         return rates[keys[0]]
@@ -195,7 +195,7 @@ def _per_ped_base(n_ped: int, tracker: str) -> float:
 def _simulate_lightweight(cfg: ScenarioConfig) -> SimulationResult:
     """Run a fast analytical simulation without CARLA."""
     rng = np.random.default_rng(cfg.seed)
-    base_tracker = "sfekf" if cfg.tracker in ("sfekf", "sfekf_simplex") else "cv"
+    base_tracker = "sf_ct_ekf" if cfg.tracker in ("sf_ct_ekf", "sf_ct_ekf_simplex") else "cv_kf"
 
     # Generate pedestrian params if not specified
     peds = cfg.pedestrians or [
@@ -236,7 +236,7 @@ def _simulate_lightweight(cfg: ScenarioConfig) -> SimulationResult:
         min_ttc = min(min_ttc, ttc_min_ped)
 
         # Tracking error model
-        if base_tracker == "sfekf":
+        if base_tracker == "sf_ct_ekf":
             ade_i = max(0.1, rng.normal(0.42, 0.15))
             fde_i = max(0.2, rng.normal(0.78, 0.2))
         else:
@@ -250,7 +250,7 @@ def _simulate_lightweight(cfg: ScenarioConfig) -> SimulationResult:
         ))
 
     # Simplex false-positive brakes
-    if cfg.tracker == "sfekf_simplex":
+    if cfg.tracker == "sf_ct_ekf_simplex":
         for ped in peds:
             if rng.random() < 0.063:
                 n_fp_brakes += 1
@@ -437,7 +437,7 @@ def _simulate_carla(cfg: ScenarioConfig) -> SimulationResult:
             ttc_trace.append(step_min_ttc)
 
             # Simplex intervention
-            if cfg.tracker == "sfekf_simplex" and step_min_ttc < cfg.tau_safe:
+            if cfg.tracker == "sf_ct_ekf_simplex" and step_min_ttc < cfg.tau_safe:
                 if not emergency_active:
                     emergency_active = True
                     result.response_time_s = step * cfg.dt
@@ -455,11 +455,11 @@ def _simulate_carla(cfg: ScenarioConfig) -> SimulationResult:
         result.ttc_trace = ttc_trace
 
         # ADE/FDE from ground truth vs simulated tracker noise
-        base_tracker = "sfekf" if cfg.tracker != "cv" else "cv"
+        base_tracker = "sf_ct_ekf" if cfg.tracker != "cv_kf" else "cv_kf"
         ade_sum = 0.0
         max_fde = 0.0
         for i, walker in enumerate(walkers):
-            if base_tracker == "sfekf":
+            if base_tracker == "sf_ct_ekf":
                 ade_i = max(0.1, rng.normal(0.42, 0.15))
                 fde_i = max(0.2, rng.normal(0.78, 0.2))
             else:
@@ -531,8 +531,9 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(description="Run single Simplex-Track scenario")
-    parser.add_argument("--tracker", choices=["cv", "sfekf", "sfekf_simplex"],
-                        default="sfekf")
+    parser.add_argument("--tracker", choices=["cv_kf", "sf_ct_ekf", "sf_ct_ekf_simplex",
+                                              "sf_cv_ekf", "sf_cv_ekf_simplex"],
+                        default="sf_ct_ekf")
     parser.add_argument("--n_ped", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--T", type=float, default=30.0)

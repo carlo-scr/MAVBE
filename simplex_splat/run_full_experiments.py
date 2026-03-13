@@ -78,7 +78,7 @@ def run_density_sweep(n_trials: int = 100, quick: bool = False) -> dict:
     """Sweep collision rates across {CV, SF-EKF, SF-EKF+Simplex} × {3,5,7,10}."""
     logger.info("═══ 4a: Density Sweep ═══")
     densities = [3, 5, 7, 10]
-    trackers = ["cv", "sfekf", "sfekf_simplex"]
+    trackers = ["cv_kf", "sf_ct_ekf", "sf_ct_ekf_simplex"]
     results = {}
 
     for tracker in trackers:
@@ -139,17 +139,17 @@ def run_validation_pipeline(n_ped: int = 5, quick: bool = False) -> dict:
 
     # 1. Direct MC
     mc_n = 100 if quick else 500
-    mc = run_monte_carlo(n_samples=mc_n, n_ped=n_ped, tracker="sfekf")
+    mc = run_monte_carlo(n_samples=mc_n, n_ped=n_ped, tracker="sf_ct_ekf")
     results["mc"] = mc.to_dict()
     results["mc"]["results"] = mc.results  # keep for convergence analysis
 
     # CV baseline
-    mc_cv = run_monte_carlo(n_samples=mc_n, n_ped=n_ped, tracker="cv", seed=3024)
+    mc_cv = run_monte_carlo(n_samples=mc_n, n_ped=n_ped, tracker="cv_kf", seed=3024)
     results["cv_mc"] = mc_cv.to_dict()
 
     # 2. CMA-ES
     cmaes_n = 50 if quick else 100
-    cmaes = run_cmaes(n_ped=n_ped, tracker="sfekf", max_evals=cmaes_n)
+    cmaes = run_cmaes(n_ped=n_ped, tracker="sf_ct_ekf", max_evals=cmaes_n)
     results["cmaes"] = cmaes.to_dict()
 
     # 3. MCMC (seeded from CMA-ES worst case)
@@ -205,7 +205,7 @@ def run_threshold_sweep(n_trials: int = 100, quick: bool = False) -> dict:
     """Sweep τ_safe for collision rate and FP brake rate."""
     logger.info("═══ 4c: Threshold Sweep ═══")
     tau_values = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
-    trackers = ["cv", "sfekf"]
+    trackers = ["cv_kf", "sf_ct_ekf"]
     n = n_trials if not quick else 20
     results = {}
 
@@ -217,7 +217,7 @@ def run_threshold_sweep(n_trials: int = 100, quick: bool = False) -> dict:
             fp_brakes = []
 
             # Run with simplex at each threshold
-            simplex_tracker = f"{base_tracker}_simplex" if base_tracker == "sfekf" else "sfekf_simplex"
+            simplex_tracker = f"{base_tracker}_simplex" if base_tracker == "sf_ct_ekf" else "sf_ct_ekf_simplex"
 
             for _ in range(n):
                 cfg = ScenarioConfig(
@@ -270,7 +270,7 @@ def run_stl_trace(worst_case_params: dict = None, quick: bool = False) -> dict:
 
     results = {}
 
-    for tracker in ["cv", "sfekf_simplex"]:
+    for tracker in ["cv_kf", "sf_ct_ekf_simplex"]:
         cfg = ScenarioConfig(
             n_ped=5,
             pedestrians=peds,
@@ -300,10 +300,10 @@ def run_ablation(n_trials: int = 200, quick: bool = False) -> dict:
     logger.info("═══ Ablation Study ═══")
     n = n_trials if not quick else 30
     configs = {
-        "full": "sfekf_simplex",
-        "no_social": "cv",   # CV with simplex — approximate via param
-        "no_simplex": "sfekf",
-        "cv_only": "cv",
+        "full": "sf_ct_ekf_simplex",
+        "no_social": "cv_kf",
+        "no_simplex": "sf_ct_ekf",
+        "cv_only": "cv_kf",
     }
 
     results = {}
@@ -434,7 +434,7 @@ def main():
     print(f"IS: p_fail={is_r.get('p_fail_is', '?')}, VR={is_r.get('variance_reduction', '?')}x")
 
     dens = results.get("density", {})
-    for t in ["cv", "sfekf", "sfekf_simplex"]:
+    for t in ["cv_kf", "sf_ct_ekf", "sf_ct_ekf_simplex"]:
         rates = [dens.get(f"{t}_{n}", {}).get("collision_rate", "?") for n in [3, 5, 7, 10]]
         print(f"Density {t}: {rates}")
 

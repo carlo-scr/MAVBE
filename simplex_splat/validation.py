@@ -196,7 +196,7 @@ def _run_batch(n: int, n_ped: int, tracker: str, rng: np.random.Generator,
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_monte_carlo(n_samples: int = 500, n_ped: int = 5,
-                    tracker: str = "sfekf", seed: int = 2024,
+                    tracker: str = "sf_ct_ekf", seed: int = 2024,
                     tau_safe: float = 2.0) -> MCResult:
     """Direct Monte Carlo failure rate estimation."""
     logger.info("Running Direct MC: N=%d, tracker=%s", n_samples, tracker)
@@ -231,7 +231,7 @@ def run_monte_carlo(n_samples: int = 500, n_ped: int = 5,
 # 3b. CMA-ES Falsification (Section IV-B)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def run_cmaes(n_ped: int = 5, tracker: str = "sfekf",
+def run_cmaes(n_ped: int = 5, tracker: str = "sf_ct_ekf",
               max_evals: int = 100, seed: int = 4024,
               tau_safe: float = 2.0) -> CMAESResult:
     """CMA-ES optimisation to find worst-case scenario (minimise ρ_min)."""
@@ -338,7 +338,7 @@ def run_cmaes(n_ped: int = 5, tracker: str = "sfekf",
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_mcmc(n_steps: int = 2000, burn_in: int = 200,
-             n_ped: int = 5, tracker: str = "sfekf",
+             n_ped: int = 5, tracker: str = "sf_ct_ekf",
              init_point: Optional[Tuple[float, float, float]] = None,
              seed: int = 5024, tau_safe: float = 2.0) -> MCMCResult:
     """Metropolis-Hastings targeting p_fail(τ) ∝ p(τ) · F(τ)."""
@@ -423,7 +423,7 @@ def run_mcmc(n_steps: int = 2000, burn_in: int = 200,
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_importance_sampling(n_samples: int = 500, n_ped: int = 5,
-                            tracker: str = "sfekf",
+                            tracker: str = "sf_ct_ekf",
                             mu_q: Optional[np.ndarray] = None,
                             sigma_q: Optional[np.ndarray] = None,
                             mc_se: Optional[float] = None,
@@ -508,7 +508,7 @@ def run_importance_sampling(n_samples: int = 500, n_ped: int = 5,
 
 def run_cross_entropy(n_per_iter: int = 200, rho_quantile: float = 0.1,
                       max_iters: int = 15, n_ped: int = 5,
-                      tracker: str = "sfekf", seed: int = 8024,
+                      tracker: str = "sf_ct_ekf", seed: int = 8024,
                       mc_se: Optional[float] = None,
                       tau_safe: float = 2.0) -> CEResult:
     """Cross-entropy method for failure probability estimation.

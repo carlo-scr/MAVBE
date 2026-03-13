@@ -54,8 +54,8 @@ def extract_values(data: dict) -> dict:
         return entry.get("collision_rate", 0), entry.get("collision_std", 0)
 
     density_vals = {}
-    for tracker in ["cv", "sfekf", "sfekf_simplex"]:
-        short = {"cv": "cv", "sfekf": "sf", "sfekf_simplex": "sx"}[tracker]
+    for tracker in ["cv_kf", "sf_ct_ekf", "sf_ct_ekf_simplex"]:
+        short = {"cv_kf": "cv", "sf_ct_ekf": "sf", "sf_ct_ekf_simplex": "sx"}[tracker]
         for n in [3, 5, 7, 10]:
             rate, std = _dens(tracker, n)
             density_vals[f"{short}_{n}"] = (round(rate, 1), round(std, 1))
@@ -121,7 +121,7 @@ def extract_values(data: dict) -> dict:
     simplex_vs_sf_pct = round(100 * (sf5 - sx5) / sf5) if sf5 > 0 else 0
 
     # ── Threshold sweep ──────────────────────────────────────────────────
-    sf_thresh = threshold.get("sfekf", [])
+    sf_thresh = threshold.get("sf_ct_ekf", [])
     tau_star = 2.0
     sf_coll_at_tau = 3.1
     sf_fp_at_tau = 6.3
@@ -132,7 +132,7 @@ def extract_values(data: dict) -> dict:
             break
 
     # ── STL robustness ───────────────────────────────────────────────────
-    cv_stl = stl.get("cv", {})
+    cv_stl = stl.get("cv_kf", {})
     stl_violation_time = round(cv_stl.get("violation_time", 3.2), 1)
     stl_min_ttc = round(cv_stl.get("min_ttc", 0.1), 1)
     stl_rho = round(cv_stl.get("rho_min", -1.9), 1)

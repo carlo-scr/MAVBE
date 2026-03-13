@@ -2,7 +2,7 @@
   {
     "scenario_id": 0,
     "n_ped": 5,
-    "tracker": "cv",
+    "tracker": "sfcvekf_simplex",
     "v_ego_kmh": 10.0,
     "tau_safe": 2.0,
     "seed": 191664964,
@@ -62,7 +62,7 @@
   {
     "scenario_id": 1,
     "n_ped": 5,
-    "tracker": "cv",
+    "tracker": "sfcvekf_simplex",
     "v_ego_kmh": 10.0,
     "tau_safe": 2.0,
     "seed": 1662057958,

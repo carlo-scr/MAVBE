@@ -1,0 +1,122 @@
+[
+  {
+    "scenario_id": 0,
+    "n_ped": 5,
+    "tracker": "sf_cv_ekf",
+    "v_ego_kmh": 10.0,
+    "tau_safe": 2.0,
+    "seed": 191664964,
+    "pedestrians": [
+      {
+        "ped_id": 0,
+        "d_spawn": 11.238786183276595,
+        "theta_spawn": -0.47750300190394684,
+        "theta_approach": 0.8719099512645024,
+        "v_init": 1.6505586311222298,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 1,
+        "d_spawn": 23.258795528827363,
+        "theta_spawn": -1.1282210758538282,
+        "theta_approach": 0.025971932108383174,
+        "v_init": 1.8867119505212668,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 2,
+        "d_spawn": 23.298697458607265,
+        "theta_spawn": 1.2025427941051852,
+        "theta_approach": 1.6735467044053667,
+        "v_init": 0.7780680225708749,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 3,
+        "d_spawn": 24.23436055042083,
+        "theta_spawn": -0.09257674992231095,
+        "theta_approach": 2.356986253181823,
+        "v_init": 1.9687609612020662,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 4,
+        "d_spawn": 11.851747844487354,
+        "theta_spawn": -0.9570611756595568,
+        "theta_approach": 1.4713704133926386,
+        "v_init": 1.767061251040956,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      }
+    ]
+  },
+  {
+    "scenario_id": 1,
+    "n_ped": 5,
+    "tracker": "sf_cv_ekf",
+    "v_ego_kmh": 10.0,
+    "tau_safe": 2.0,
+    "seed": 1662057958,
+    "pedestrians": [
+      {
+        "ped_id": 0,
+        "d_spawn": 18.266674639584078,
+        "theta_spawn": 0.71672477498293,
+        "theta_approach": 5.869744312649093,
+        "v_init": 1.080864202908482,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 1,
+        "d_spawn": 6.094394188946327,
+        "theta_spawn": 1.2390220426045484,
+        "theta_approach": 4.686301395211336,
+        "v_init": 1.631673408219679,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 2,
+        "d_spawn": 21.255230776310025,
+        "theta_spawn": -1.187248662906681,
+        "theta_approach": 1.2978581904401478,
+        "v_init": 1.9989801044917002,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 3,
+        "d_spawn": 7.65524403599335,
+        "theta_spawn": -1.072444267819523,
+        "theta_approach": 6.012075907828862,
+        "v_init": 1.772889103207198,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      },
+      {
+        "ped_id": 4,
+        "d_spawn": 31.7127403053082,
+        "theta_spawn": 0.6486793221998957,
+        "theta_approach": 2.0247116737203354,
+        "v_init": 0.9384062731481786,
+        "spawn_x": null,
+        "spawn_y": null,
+        "spawn_z": null
+      }
+    ]
+  }
+]

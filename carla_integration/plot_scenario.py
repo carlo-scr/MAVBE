@@ -137,7 +137,7 @@ def load_scenario(sc_dir: Path) -> tuple[dict, dict]:
 
 def plot_scenario(sc_dir: Path, save: bool = False, out_path: Path | None = None):
     gt, tk = load_scenario(sc_dir)
-    tracker_type = tk.get("tracker", "cv")
+    tracker_type = tk.get("tracker", "cv_kf")
 
     fig, ax = plt.subplots(figsize=(16, 10))
 

@@ -17,9 +17,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # From failure_rate_density.tex coordinates:
 density_data = {
-    "cv":      {3: (8.2, 2.1),  5: (16.4, 3.0),  7: (27.8, 3.5),  10: (41.2, 4.1)},
-    "sfekf":   {3: (3.1, 1.4),  5: (7.8, 2.2),   7: (14.6, 2.8),  10: (24.3, 3.6)},
-    "simplex": {3: (0.8, 0.6),  5: (2.1, 1.1),   7: (5.3, 1.9),   10: (11.7, 2.8)},
+    "cv_kf":              {3: (8.2, 2.1),  5: (16.4, 3.0),  7: (27.8, 3.5),  10: (41.2, 4.1)},
+    "sf_ct_ekf":          {3: (3.1, 1.4),  5: (7.8, 2.2),   7: (14.6, 2.8),  10: (24.3, 3.6)},
+    "sf_ct_ekf_simplex":  {3: (0.8, 0.6),  5: (2.1, 1.1),   7: (5.3, 1.9),   10: (11.7, 2.8)},
 }
 
 # From roc_threshold.tex coordinates:
@@ -47,12 +47,12 @@ ci_lo_mc = round(p_fail_mc - 1.96 * se_mc, 3)
 ci_hi_mc = round(p_fail_mc + 1.96 * se_mc, 3)
 
 # CV baseline failure rate
-p_fail_cv = density_data["cv"][5][0] / 100  # 0.164
+p_fail_cv = density_data["cv_kf"][5][0] / 100  # 0.164
 
 # --- Reductions ---
-sf5 = density_data["sfekf"][5][0]
-cv5 = density_data["cv"][5][0]
-sx5 = density_data["simplex"][5][0]
+sf5 = density_data["sf_ct_ekf"][5][0]
+cv5 = density_data["cv_kf"][5][0]
+sx5 = density_data["sf_ct_ekf_simplex"][5][0]
 sf_vs_cv_pct = round(100 * (cv5 - sf5) / cv5)  # 52%
 simplex_vs_sf_pct = round(100 * (sf5 - sx5) / sf5)  # 73%
 
@@ -126,11 +126,11 @@ mc_converge_samples = 3000
 is_equiv_samples = round(N_mc / is_vr)
 
 # --- Regime analysis ---
-cv_med = round((density_data["cv"][5][0] + density_data["cv"][7][0]) / 2, 1)
-sf_med = round((density_data["sfekf"][5][0] + density_data["sfekf"][7][0]) / 2, 1)
+cv_med = round((density_data["cv_kf"][5][0] + density_data["cv_kf"][7][0]) / 2, 1)
+sf_med = round((density_data["sf_ct_ekf"][5][0] + density_data["sf_ct_ekf"][7][0]) / 2, 1)
 med_reduction = round(100 * (cv_med - sf_med) / cv_med)
-low_reduction = round(100 * (density_data["cv"][3][0] - density_data["sfekf"][3][0]) / density_data["cv"][3][0])
-high_reduction = round(100 * (density_data["cv"][10][0] - density_data["sfekf"][10][0]) / density_data["cv"][10][0])
+low_reduction = round(100 * (density_data["cv_kf"][3][0] - density_data["sf_ct_ekf"][3][0]) / density_data["cv_kf"][3][0])
+high_reduction = round(100 * (density_data["cv_kf"][10][0] - density_data["sf_ct_ekf"][10][0]) / density_data["cv_kf"][10][0])
 
 # Threshold sweep — from roc_threshold figure at tau*=2.0:
 tau_star = 2.0
@@ -214,18 +214,18 @@ values = {
     "simplex_vs_sf_pct": simplex_vs_sf_pct,
 
     # Density table
-    "cv_3": density_data["cv"][3],
-    "cv_5": density_data["cv"][5],
-    "cv_7": density_data["cv"][7],
-    "cv_10": density_data["cv"][10],
-    "sf_3": density_data["sfekf"][3],
-    "sf_5": density_data["sfekf"][5],
-    "sf_7": density_data["sfekf"][7],
-    "sf_10": density_data["sfekf"][10],
-    "sx_3": density_data["simplex"][3],
-    "sx_5": density_data["simplex"][5],
-    "sx_7": density_data["simplex"][7],
-    "sx_10": density_data["simplex"][10],
+    "cv_3": density_data["cv_kf"][3],
+    "cv_5": density_data["cv_kf"][5],
+    "cv_7": density_data["cv_kf"][7],
+    "cv_10": density_data["cv_kf"][10],
+    "sf_3": density_data["sf_ct_ekf"][3],
+    "sf_5": density_data["sf_ct_ekf"][5],
+    "sf_7": density_data["sf_ct_ekf"][7],
+    "sf_10": density_data["sf_ct_ekf"][10],
+    "sx_3": density_data["sf_ct_ekf_simplex"][3],
+    "sx_5": density_data["sf_ct_ekf_simplex"][5],
+    "sx_7": density_data["sf_ct_ekf_simplex"][7],
+    "sx_10": density_data["sf_ct_ekf_simplex"][10],
 
     # Failure modes
     "failure_broadside_pct": failure_broadside_pct,

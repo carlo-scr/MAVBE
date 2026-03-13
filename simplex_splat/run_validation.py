@@ -53,7 +53,7 @@ def collision_probability_cv(d_spawn: float, theta_deg: float, v_init: float) ->
     return float(np.clip(p_sf * 2.1 + 0.02, 0, 1))
 
 
-def simulate_scenario(n_ped: int, method: str = "sfekf", rng=None) -> dict:
+def simulate_scenario(n_ped: int, method: str = "sf_ct_ekf", rng=None) -> dict:
     """Simulate one scenario and return metrics."""
     if rng is None:
         rng = np.random.default_rng()
@@ -68,7 +68,7 @@ def simulate_scenario(n_ped: int, method: str = "sfekf", rng=None) -> dict:
         theta = rng.uniform(0, 180)
         v_init = rng.uniform(0.5, 2.0)
 
-        if method == "sfekf":
+        if method == "sf_ct_ekf":
             p_coll = collision_probability_sfekf(d_spawn, theta, v_init)
         else:
             p_coll = collision_probability_cv(d_spawn, theta, v_init)
@@ -83,7 +83,7 @@ def simulate_scenario(n_ped: int, method: str = "sfekf", rng=None) -> dict:
         min_ttc = min(min_ttc, ttc_min_ped)
 
         # Tracking error
-        if method == "sfekf":
+        if method == "sf_ct_ekf":
             ade_sum += rng.normal(0.42, 0.15)
             fde = max(fde, rng.normal(0.78, 0.2))
         else:
@@ -109,11 +109,11 @@ def run_density_sweep(n_trials: int = 100) -> dict:
     results = {}
 
     for n_ped in densities:
-        for method in ["cv", "sfekf"]:
+        for method in ["cv_kf", "sf_ct_ekf"]:
             collisions = []
             ades = []
             fdes = []
-            rng = np.random.default_rng(n_ped * 1000 + (0 if method == "cv" else 1))
+            rng = np.random.default_rng(n_ped * 1000 + (0 if method == "cv_kf" else 1))
 
             for _ in range(n_trials):
                 r = simulate_scenario(n_ped, method, rng)
@@ -152,7 +152,7 @@ def run_direct_mc(n_ped: int = 5, n_samples: int = 500) -> dict:
     failures = 0
 
     for _ in range(n_samples):
-        r = simulate_scenario(n_ped, "sfekf", rng)
+        r = simulate_scenario(n_ped, "sf_ct_ekf", rng)
         if r["collision"]:
             failures += 1
 
@@ -176,7 +176,7 @@ def run_cv_mc(n_ped: int = 5, n_samples: int = 500) -> dict:
     rng = np.random.default_rng(3024)
     failures = 0
     for _ in range(n_samples):
-        r = simulate_scenario(n_ped, "cv", rng)
+        r = simulate_scenario(n_ped, "cv_kf", rng)
         if r["collision"]:
             failures += 1
     return {"p_fail": round(failures / n_samples, 3)}
@@ -379,7 +379,7 @@ def run_cross_entropy(n_ped: int = 5, n_per_iter: int = 200, rho_quantile: float
             theta = np.clip(rng.normal(mu[1], sigma[1]), 0, 180)
             v = np.clip(rng.normal(mu[2], sigma[2]), 0.5, 2.0)
 
-            r = simulate_scenario(n_ped, "sfekf", rng)
+            r = simulate_scenario(n_ped, "sf_ct_ekf", rng)
             samples.append([d, theta, v])
             robustnesses.append(r["robustness"])
 
@@ -411,7 +411,7 @@ def run_cross_entropy(n_ped: int = 5, n_per_iter: int = 200, rho_quantile: float
     failures = 0
     n_final = 500
     for _ in range(n_final):
-        r = simulate_scenario(n_ped, "sfekf", rng)
+        r = simulate_scenario(n_ped, "sf_ct_ekf", rng)
         if r["collision"]:
             failures += 1
 
@@ -433,10 +433,10 @@ def run_ablation(n_trials: int = 200) -> dict:
     n_ped = 5
 
     configs = {
-        "full": {"method": "sfekf", "simplex": True},
-        "no_social": {"method": "cv", "simplex": True},
-        "no_simplex": {"method": "sfekf", "simplex": False},
-        "cv_only": {"method": "cv", "simplex": False},
+        "full": {"method": "sf_ct_ekf", "simplex": True},
+        "no_social": {"method": "cv_kf", "simplex": True},
+        "no_simplex": {"method": "sf_ct_ekf", "simplex": False},
+        "cv_only": {"method": "cv_kf", "simplex": False},
     }
 
     results = {}
@@ -457,7 +457,7 @@ def run_ablation(n_trials: int = 200) -> dict:
         # FP brake rate: simplex triggers false alarms
         fp_brake = 0.0
         if cfg["simplex"]:
-            if cfg["method"] == "sfekf":
+            if cfg["method"] == "sf_ct_ekf":
                 fp_brake = rng.normal(6.3, 0.5)
             else:
                 fp_brake = rng.normal(8.1, 0.6)

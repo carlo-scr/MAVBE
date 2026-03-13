@@ -66,15 +66,15 @@ def generate_failure_rate_density(data: dict):
         return rate, std
 
     cv_coords = "\n".join(
-        f"    ({n},  {get_val('cv', n)[0]})  +- (0, {get_val('cv', n)[1]})"
+        f"    ({n},  {get_val('cv_kf', n)[0]})  +- (0, {get_val('cv_kf', n)[1]})"
         for n in densities
     )
     sf_coords = "\n".join(
-        f"    ({n},  {get_val('sfekf', n)[0]})  +- (0, {get_val('sfekf', n)[1]})"
+        f"    ({n},  {get_val('sf_ct_ekf', n)[0]})  +- (0, {get_val('sf_ct_ekf', n)[1]})"
         for n in densities
     )
     sx_coords = "\n".join(
-        f"    ({n},  {get_val('sfekf_simplex', n)[0]})  +- (0, {get_val('sfekf_simplex', n)[1]})"
+        f"    ({n},  {get_val('sf_ct_ekf_simplex', n)[0]})  +- (0, {get_val('sf_ct_ekf_simplex', n)[1]})"
         for n in densities
     )
 
@@ -374,13 +374,13 @@ def generate_roc_threshold(data: dict):
             for e in entries
         )
 
-    sf_coll = fmt_sweep("sfekf", "collision_rate")
-    sf_fp = fmt_sweep("sfekf", "fp_brake_rate")
-    cv_coll = fmt_sweep("cv", "collision_rate")
-    cv_fp = fmt_sweep("cv", "fp_brake_rate")
+    sf_coll = fmt_sweep("sf_ct_ekf", "collision_rate")
+    sf_fp = fmt_sweep("sf_ct_ekf", "fp_brake_rate")
+    cv_coll = fmt_sweep("cv_kf", "collision_rate")
+    cv_fp = fmt_sweep("cv_kf", "fp_brake_rate")
 
     # Find optimal threshold
-    sf_entries = thresh.get("sfekf", [])
+    sf_entries = thresh.get("sf_ct_ekf", [])
     tau_star = 2.0
     if sf_entries:
         # Find tau where collision ≈ FP rate crossover
@@ -470,8 +470,8 @@ def generate_stl_robustness(data: dict):
             coords.append(f"({t:.1f}, {ttc:.1f})")
         return "".join(coords)
 
-    cv_data = stl.get("cv", {})
-    sx_data = stl.get("sfekf_simplex", {})
+    cv_data = stl.get("cv_kf", {})
+    sx_data = stl.get("sf_ct_ekf_simplex", {})
 
     cv_ttc = cv_data.get("ttc_trace", [])
     sx_ttc = sx_data.get("ttc_trace", [])
