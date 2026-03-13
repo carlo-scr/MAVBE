@@ -1,0 +1,14 @@
+{
+  "tracker": "cv",
+  "disturbance": "fuzzed",
+  "n_scenarios": 2,
+  "n_ped": 5,
+  "collision_rate_pct": 100.0,
+  "n_collisions": 2,
+  "mean_ade": 0.1214,
+  "mean_fde": 0.0963,
+  "mean_fp_brakes": 0.0,
+  "mean_brake_steps": 21.5,
+  "min_rho_min": -2.0,
+  "elapsed_s": 269.5
+}
