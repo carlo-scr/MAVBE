@@ -1,65 +1,72 @@
-% System Architecture: Simplex-Track perception pipeline
-% CARLA Sensors → YOLOv9 → DeepSORT → Social Force EKF → TTC Monitor → Continue/E-Stop
+% System Architecture: Simplex-Track
+% Three clear sections left-to-right: Advanced Channel → Decision Module → Actuation
 \begin{tikzpicture}[
-    node distance=0.6cm and 0.45cm,
-    block/.style={rectangle, draw, fill=lightcyan!40, minimum height=0.7cm, minimum width=1.6cm, align=center, font=\scriptsize\sffamily, rounded corners=2pt, line width=0.5pt},
-    sensor/.style={block, fill=goldcol!30},
-    advanced/.style={block, fill=tealaccent!20},
-    monitor/.style={block, fill=mauvecol!20},
-    baseline/.style={block, fill=dangerzone!15},
-    output/.style={block, fill=safezone!20},
-    arrow/.style={-{Stealth[length=4pt]}, thick, color=darkteal},
-    dasharrow/.style={-{Stealth[length=4pt]}, thick, dashed, color=dangerzone},
-    label/.style={font=\tiny\sffamily\itshape, color=darkteal},
-    grouplabel/.style={font=\scriptsize\sffamily\bfseries, color=darkteal},
+    node distance=0.30cm and 0.30cm,
+    block/.style={rectangle, draw, minimum height=0.58cm, minimum width=1.05cm,
+                  align=center, font=\scriptsize\sffamily, rounded corners=2pt, line width=0.5pt},
+    advanced/.style={block, fill=tealaccent!20, draw=tealaccent!60},
+    monitor/.style={block, fill=mauvecol!20,    draw=mauvecol!60},
+    baseline/.style={block, fill=dangerzone!15, draw=dangerzone!60},
+    output/.style={block, fill=safezone!20,     draw=safezone!60},
+    arrow/.style={-{Stealth[length=3.5pt]}, thick, color=darkteal},
+    dasharrow/.style={-{Stealth[length=3.5pt]}, thick, dashed, color=dangerzone},
+    lbl/.style={font=\small\sffamily\bfseries},
+    grouplabel/.style={font=\scriptsize\sffamily\bfseries},
 ]
 
-% Row 1: Perception Pipeline (Advanced Channel)
-\node[sensor] (carla) {CARLA\\Simulator};
-\node[sensor, right=of carla] (rgb) {RGB\\Sensors};
-\node[advanced, right=of rgb] (yolo) {YOLOv9\\Detector};
-\node[advanced, right=of yolo] (deepsort) {DeepSORT\\Tracker};
-\node[advanced, right=of deepsort] (sfekf) {Social Force\\EKF};
+% ── Advanced Channel (left section) ─────────────────────────────────────────
+\node[advanced] (yolo)     {YOLOv9};
+\node[advanced, right=of yolo]     (deepsort) {DeepSORT};
+\node[advanced, right=of deepsort] (sfekf)    {SF-EKF};
 
-% Row 2: Decision Module
-\node[monitor, below=0.9cm of sfekf] (ttc) {TTC\\Monitor};
-\node[monitor, left=of ttc] (odd) {ODD\\Monitor};
-\node[monitor, left=of odd] (uq) {Uncertainty\\Quantifier};
+% ── Decision Module (middle section) ─────────────────────────────────────────
+% ODD and UQ stacked to the left of TTC, all inside the Decision Module box
+\coordinate (dmLeft) at ($(sfekf.east)+(1.8cm, 0)$);
+\node[monitor, minimum width=1.05cm] (odd) at ($(dmLeft)+(0, 0.36cm)$)  {ODD\\Mon.};
+\node[monitor, minimum width=1.05cm] (uq)  at ($(dmLeft)+(0,-0.36cm)$)  {UQ};
+\node[monitor, minimum width=1.15cm] (ttc) at ($(dmLeft)+(1.55cm, 0)$)  {TTC\\Monitor};
 
-% Row 3: Output Controllers
-\node[output, below=0.9cm of odd] (cont) {Continue\\Navigation};
-\node[baseline, right=of cont] (estop) {Emergency\\Braking};
+% ── Actuation (right section) ─────────────────────────────────────────────
+\node[output,   minimum width=1.05cm] (cont)  at ($(ttc.east)+(2.3cm, 0.36cm)$)  {Continue};
+\node[baseline, minimum width=1.05cm] (estop) at ($(ttc.east)+(2.3cm,-0.36cm)$)  {Brake};
 
-% Arrows: perception pipeline
-\draw[arrow] (carla) -- (rgb);
-\draw[arrow] (rgb) -- (yolo);
-\draw[arrow] (yolo) -- (deepsort);
+% ── Advanced Channel pipeline ─────────────────────────────────────────────
+\draw[arrow] ([xshift=-0.90cm]yolo.west) -- (yolo.west);
+\node[above=0.04cm, font=\small\sffamily, color=darkteal!80, align=center]
+    at ([xshift=-0.90cm]yolo.west) {CARLA};
+\draw[arrow] (yolo)     -- (deepsort);
 \draw[arrow] (deepsort) -- (sfekf);
 
-% Arrows: to decision module
-\draw[arrow] (sfekf) -- (ttc);
-\draw[arrow] (sfekf) |- (uq);
-\draw[arrow] (deepsort) |- (odd);
+% ── SF-EKF fans into ODD and UQ ──────────────────────────────────────────
+\draw[arrow] (sfekf.east) to[out=20,  in=180] (odd.west);
+\draw[arrow] (sfekf.east) to[out=-20, in=180] (uq.west);
 
-% Arrows: decision logic
-\draw[arrow] (uq) -- (odd);
-\draw[arrow] (odd) -- (ttc);
+% ── ODD and UQ feed into TTC ──────────────────────────────────────────────
+\draw[arrow] (odd.east) to[out=0, in=150] (ttc.north west);
+\draw[arrow] (uq.east)  to[out=0, in=210] (ttc.south west);
 
-% Arrows: outputs
-\draw[arrow, color=safezone] (ttc) -| node[label, near start, right] {$\rho(\varphi) \geq 0$} (cont);
-\draw[dasharrow] (ttc) -| node[label, near start, left] {$\rho(\varphi) < 0$} (estop);
+% ── TTC decision outputs with clear ρ labels ──────────────────────────────
+\draw[arrow, color=safezone!80!darkteal]
+    (ttc.east) to[out=20, in=180] (cont.west);
+\draw[dasharrow]
+    (ttc.east) to[out=-20, in=180] (estop.west);
+% ρ labels placed explicitly at 60% of the way into the gap
+\node[lbl, color=safezone!70!black]
+    at ($(ttc.east)!0.60!(cont.west)+(0,0.35cm)$)  {$\rho\!\geq\!0$};
+\node[lbl, color=dangerzone!80!black]
+    at ($(ttc.east)!0.60!(estop.west)+(0,-0.35cm)$) {$\rho\!<\!0$};
 
-% Group boxes
+% ── Group bounding boxes (on background) ─────────────────────────────────
 \begin{scope}[on background layer]
     \node[draw=tealaccent, dashed, fill=tealaccent!5, rounded corners=4pt,
-          fit=(yolo)(deepsort)(sfekf), inner sep=4pt,
-          label={[grouplabel, anchor=south]above:Advanced Channel (Perception)}] {};
+          fit=(yolo)(deepsort)(sfekf), inner sep=5pt,
+          label={[grouplabel, color=tealaccent!70!black, anchor=south]above:Advanced Channel}] {};
     \node[draw=mauvecol, dashed, fill=mauvecol!5, rounded corners=4pt,
-          fit=(uq)(odd)(ttc), inner sep=4pt,
-          label={[grouplabel, anchor=south]above:Decision Module}] {};
-    \node[draw=safezone, dashed, fill=safezone!5, rounded corners=4pt,
-          fit=(cont)(estop), inner sep=4pt,
-          label={[grouplabel, anchor=south]above:Actuation}] {};
+          fit=(odd)(uq)(ttc), inner sep=5pt,
+          label={[grouplabel, color=mauvecol!70!black, anchor=south]above:Decision Module}] {};
+    \node[draw=safezone!80!black, dashed, fill=safezone!5, rounded corners=4pt,
+          fit=(cont)(estop), inner sep=5pt,
+          label={[grouplabel, color=safezone!60!black, anchor=south]above:Actuation}] {};
 \end{scope}
 
 \end{tikzpicture}

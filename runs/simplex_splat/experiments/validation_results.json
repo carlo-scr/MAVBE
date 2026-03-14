@@ -109,18 +109,18 @@
   },
   "is": {
     "n_samples": 500,
-    "p_fail_is": 0.108,
-    "se_is": 0.032,
-    "ess": 27.0,
-    "variance_reduction": 0.2
+    "p_fail_is": 0.15,
+    "se_is": 0.008,
+    "ess": 117.0,
+    "variance_reduction": 3.5
   },
   "ce": {
     "n_per_iter": 200,
     "rho_quantile": 0.1,
-    "n_iters": 1,
-    "p_fail_ce": 0.14,
-    "se_ce": 0.016,
-    "variance_reduction": 0.9
+    "n_iters": 7,
+    "p_fail_ce": 0.139,
+    "se_ce": 0.006,
+    "variance_reduction": 6.2
   },
   "ablation": {
     "full": {
@@ -147,6 +147,92 @@
       "fde": 1.58,
       "fp_brake": 0
     }
+  },
+  "threshold": {
+    "sfekf": [
+      {
+        "tau_safe": 0.5,
+        "collision_rate": 3.0,
+        "fp_brake_rate": 17.0
+      },
+      {
+        "tau_safe": 1.0,
+        "collision_rate": 1.0,
+        "fp_brake_rate": 19.0
+      },
+      {
+        "tau_safe": 1.5,
+        "collision_rate": 1.0,
+        "fp_brake_rate": 23.0
+      },
+      {
+        "tau_safe": 2.0,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 26.0
+      },
+      {
+        "tau_safe": 2.5,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 28.0
+      },
+      {
+        "tau_safe": 3.0,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 32.0
+      },
+      {
+        "tau_safe": 3.5,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 29.0
+      },
+      {
+        "tau_safe": 4.0,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 43.0
+      }
+    ],
+    "cv": [
+      {
+        "tau_safe": 0.5,
+        "collision_rate": 3.0,
+        "fp_brake_rate": 23.0
+      },
+      {
+        "tau_safe": 1.0,
+        "collision_rate": 2.0,
+        "fp_brake_rate": 31.0
+      },
+      {
+        "tau_safe": 1.5,
+        "collision_rate": 1.0,
+        "fp_brake_rate": 44.0
+      },
+      {
+        "tau_safe": 2.0,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 50.0
+      },
+      {
+        "tau_safe": 2.5,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 55.0
+      },
+      {
+        "tau_safe": 3.0,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 69.0
+      },
+      {
+        "tau_safe": 3.5,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 68.0
+      },
+      {
+        "tau_safe": 4.0,
+        "collision_rate": 0.0,
+        "fp_brake_rate": 73.0
+      }
+    ]
   },
   "derived": {
     "sf_vs_cv_reduction_pct": 58.0,

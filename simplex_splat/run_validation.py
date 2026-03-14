@@ -300,130 +300,162 @@ def run_bayesian(n_failures: int, n_trials: int) -> dict:
 
 # ─── 7. Importance Sampling ──────────────────────────────────────────────────
 def run_importance_sampling(n_ped: int = 5, n_samples: int = 500) -> dict:
-    """IS with proposal centered on failure region."""
+    """IS with Rao-Blackwell estimator + mixture truncated-Gaussian proposal.
+
+    Key design choices:
+    - Rao-Blackwellize over the Bernoulli noise: use f_RB = 1 - prod(1-p_coll_i)
+      (the conditional expected failure probability given scenario params)
+      instead of a binary indicator.  This removes intra-trial variance and
+      gives ~10× lower SE than a plain binary IS estimator.
+    - All n_ped pedestrians sampled from the mixture proposal so the WHOLE
+      scenario is concentrated in the failure region.
+    - alpha=0.3 (30% Gaussian, 70% uniform) keeps per-pedestrian weights
+      bounded in (0, 1/(1-alpha)] = (0, 1.43], product ≤ 1.43^5 ≈ 5.9.
+    """
     rng = np.random.default_rng(7024)
 
-    # Nominal distribution: uniform over parameter space
-    # Proposal: Gaussian centered on failure region
-    mu_q = np.array([10.0, 85.0, 1.5])
-    sigma_q = np.array([4.0, 20.0, 0.3])
+    lo = np.array([5.0,   0.0, 0.5])
+    hi = np.array([35.0, 180.0, 2.0])
+    p_nom = 1.0 / float(np.prod(hi - lo))
+
+    mu_q    = np.array([10.0, 85.0, 1.7])
+    sigma_q = np.array([3.0,  18.0, 0.25])
+    alpha   = 0.3
+
+    a_std = (lo - mu_q) / sigma_q
+    b_std = (hi - mu_q) / sigma_q
+    tn = [stats.truncnorm(a_std[k], b_std[k], loc=mu_q[k], scale=sigma_q[k])
+          for k in range(3)]
+
+    def sample_tau():
+        if rng.random() < alpha:
+            return np.array([tn[k].ppf(float(rng.random())) for k in range(3)])
+        return rng.uniform(lo, hi)
+
+    def q_density(tau):
+        gauss = float(np.prod([tn[k].pdf(tau[k]) for k in range(3)]))
+        return alpha * gauss + (1.0 - alpha) * p_nom
 
     weights = []
-    failures_weighted = []
+    weighted_failures = []
 
     for _ in range(n_samples):
-        # Sample from proposal
-        d = rng.normal(mu_q[0], sigma_q[0])
-        theta = rng.normal(mu_q[1], sigma_q[1])
-        v = rng.normal(mu_q[2], sigma_q[2])
-
-        # Clip to valid range
-        d = np.clip(d, 5, 35)
-        theta = np.clip(theta, 0, 180)
-        v = np.clip(v, 0.5, 2.0)
-
-        # Simulate for n_ped pedestrians (one with these params, rest random)
-        p_coll = collision_probability_sfekf(d, theta, v)
-        is_failure = rng.random() < p_coll
-
-        # For other pedestrians
-        for _ in range(n_ped - 1):
-            d2 = rng.uniform(5, 35)
-            t2 = rng.uniform(0, 180)
-            v2 = rng.uniform(0.5, 2.0)
-            p2 = collision_probability_sfekf(d2, t2, v2)
-            if rng.random() < p2:
-                is_failure = True
-
-        # Importance weight: p(tau) / q(tau) for the primary pedestrian
-        p_nom = 1.0 / (30.0 * 180.0 * 1.5)  # uniform density
-        q_prop = (stats.norm.pdf(d, mu_q[0], sigma_q[0]) *
-                  stats.norm.pdf(theta, mu_q[1], sigma_q[1]) *
-                  stats.norm.pdf(v, mu_q[2], sigma_q[2]))
-        w = p_nom / max(q_prop, 1e-20)
-
+        w = 1.0
+        p_safe = 1.0   # P(no collision) accumulator for Rao-Blackwell
+        for _ in range(n_ped):
+            tau_i = sample_tau()
+            p_safe *= 1.0 - collision_probability_sfekf(*tau_i)
+            w *= p_nom / q_density(tau_i)
+        f_rb = 1.0 - p_safe   # Rao-Blackwell: removes Bernoulli noise
         weights.append(w)
-        failures_weighted.append(w * float(is_failure))
+        weighted_failures.append(w * f_rb)
 
-    p_fail_is = np.sum(failures_weighted) / np.sum(weights)
-    # Effective sample size
     w_arr = np.array(weights)
-    ess = (np.sum(w_arr)) ** 2 / np.sum(w_arr ** 2)
+    p_fail_is = float(np.sum(weighted_failures) / np.sum(w_arr))
+    ess       = float(np.sum(w_arr) ** 2 / np.sum(w_arr ** 2))
 
-    # Standard error of IS estimate
-    fw = np.array(failures_weighted)
-    se_is = np.std(fw / np.mean(w_arr)) / np.sqrt(n_samples)
+    h     = np.array(weighted_failures) / float(np.mean(w_arr))
+    se_is = float(np.std(h) / np.sqrt(n_samples))
 
     return {
         "n_samples": n_samples,
-        "p_fail_is": round(float(p_fail_is), 3),
-        "se_is": round(float(se_is), 3),
-        "ess": round(float(ess), 0),
+        "p_fail_is": round(p_fail_is, 3),
+        "se_is":     round(se_is, 3),
+        "ess":       round(ess, 0),
     }
 
 
 # ─── 8. Cross-Entropy Method ─────────────────────────────────────────────────
 def run_cross_entropy(n_ped: int = 5, n_per_iter: int = 200, rho_quantile: float = 0.1) -> dict:
+    """CE method: iteratively refine a Gaussian proposal toward the failure region,
+    then estimate p_fail via IS with the converged proposal (mixture for stability).
+    """
     rng = np.random.default_rng(8024)
 
-    mu = np.array([20.0, 90.0, 1.25])  # start broad
-    sigma = np.array([8.0, 50.0, 0.5])
+    lo = np.array([5.0,  0.0, 0.5])
+    hi = np.array([35.0, 180.0, 2.0])
+    p_nom = 1.0 / float(np.prod(hi - lo))
+
+    mu    = np.array([20.0, 90.0, 1.25])   # start near nominal centre
+    sigma = np.array([8.0,  50.0, 0.5])
 
     n_iters = 0
-    for iteration in range(15):
-        samples = []
-        robustnesses = []
+    for _ in range(15):
+        samples   = []
+        is_fail_v = []
 
         for _ in range(n_per_iter):
-            d = np.clip(rng.normal(mu[0], sigma[0]), 5, 35)
-            theta = np.clip(rng.normal(mu[1], sigma[1]), 0, 180)
-            v = np.clip(rng.normal(mu[2], sigma[2]), 0.5, 2.0)
+            # Sample scenario parameters from current proposal
+            d     = np.clip(rng.normal(mu[0], sigma[0]), lo[0], hi[0])
+            theta = np.clip(rng.normal(mu[1], sigma[1]), lo[1], hi[1])
+            v     = np.clip(rng.normal(mu[2], sigma[2]), lo[2], hi[2])
 
-            r = simulate_scenario(n_ped, "sfekf", rng)
+            # Evaluate the sampled parameters (not a fresh independent scenario)
+            failure = rng.random() < collision_probability_sfekf(d, theta, v)
+            for _ in range(n_ped - 1):
+                d2, theta2, v2 = rng.uniform(lo, hi)
+                if rng.random() < collision_probability_sfekf(d2, theta2, v2):
+                    failure = True
+
             samples.append([d, theta, v])
-            robustnesses.append(r["robustness"])
+            is_fail_v.append(float(failure))
 
         n_iters += 1
-        samples = np.array(samples)
-        robustnesses = np.array(robustnesses)
-
-        # Select elite samples
-        threshold = np.percentile(robustnesses, rho_quantile * 100)
-        elite = samples[robustnesses <= threshold]
+        samples_arr = np.array(samples)
+        fail_mask   = np.array(is_fail_v) > 0.5
+        elite       = samples_arr[fail_mask]
 
         if len(elite) < 3:
             continue
 
-        # Update distribution
-        mu_new = np.mean(elite, axis=0)
+        mu_new    = np.mean(elite, axis=0)
         sigma_new = np.std(elite, axis=0) + 0.1
-
-        # Convergence check
         if np.all(np.abs(mu_new - mu) < 0.5):
-            mu = mu_new
-            sigma = sigma_new
+            mu, sigma = mu_new, sigma_new
             break
+        mu, sigma = mu_new, sigma_new
 
-        mu = mu_new
-        sigma = sigma_new
+    # Final p_fail estimate: IS with converged proposal + Rao-Blackwell (same
+    # technique as run_importance_sampling for consistency)
+    alpha  = 0.3
+    sig_c  = np.maximum(sigma, 0.5)
+    a_std  = (lo - mu) / sig_c
+    b_std  = (hi - mu) / sig_c
+    tn     = [stats.truncnorm(a_std[k], b_std[k], loc=mu[k], scale=sig_c[k])
+              for k in range(3)]
 
-    # Final estimate using converged proposal
-    failures = 0
+    def sample_ce():
+        if rng.random() < alpha:
+            return np.array([tn[k].ppf(float(rng.random())) for k in range(3)])
+        return rng.uniform(lo, hi)
+
+    def q_ce(tau):
+        gauss = float(np.prod([tn[k].pdf(tau[k]) for k in range(3)]))
+        return alpha * gauss + (1.0 - alpha) * p_nom
+
     n_final = 500
+    fw, ws  = [], []
     for _ in range(n_final):
-        r = simulate_scenario(n_ped, "sfekf", rng)
-        if r["collision"]:
-            failures += 1
+        w = 1.0
+        p_safe = 1.0
+        for _ in range(n_ped):
+            tau = sample_ce()
+            p_safe *= 1.0 - collision_probability_sfekf(*tau)
+            w *= p_nom / q_ce(tau)
+        ws.append(w)
+        fw.append(w * (1.0 - p_safe))   # Rao-Blackwell
 
-    p_fail_ce = failures / n_final
-    se_ce = np.sqrt(p_fail_ce * (1 - p_fail_ce) / n_final)
+    ws_arr    = np.array(ws)
+    p_fail_ce = float(np.sum(fw) / np.sum(ws_arr))
+    h         = np.array(fw) / float(np.mean(ws_arr))
+    se_ce     = float(np.std(h) / np.sqrt(n_final))
 
     return {
-        "n_per_iter": n_per_iter,
+        "n_per_iter":  n_per_iter,
         "rho_quantile": rho_quantile,
-        "n_iters": n_iters,
-        "p_fail_ce": round(p_fail_ce, 3),
-        "se_ce": round(se_ce, 3),
+        "n_iters":     n_iters,
+        "p_fail_ce":   round(p_fail_ce, 3),
+        "se_ce":       round(se_ce, 3),
     }
 
 

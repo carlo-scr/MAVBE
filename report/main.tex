@@ -63,11 +63,7 @@ Stanford University\\
 % ABSTRACT
 % ============================================================
 \begin{abstract}
-Behavior-aware state estimation promises safer autonomous navigation by predicting pedestrian intent, yet no systematic validation methodology exists for these perception-level components.
-We present \textsc{Simplex-Track}, a comprehensive validation framework for a Social Force Extended Kalman Filter (SF-EKF) pedestrian tracker deployed in the CARLA simulator with YOLOv9 detection and DeepSORT association.
-Following the validation pipeline of Kochenderfer et al.\ \cite{kochenderfer2025validation}, we: (1)~formalize the tracking system as a stochastic process and specify safety properties in Signal Temporal Logic; (2)~apply direct Monte Carlo simulation and optimization-based falsification to discover failure modes; (3)~characterize the failure distribution via Metropolis--Hastings MCMC; (4)~estimate failure probabilities using importance sampling and the cross-entropy method, achieving a 5.2$\times$ variance reduction over direct sampling; and (5)~deploy a Simplex runtime monitor with TTC-based switching that reduces the collision rate from 7.8\% to 2.1\% at medium pedestrian density.
-Bayesian estimation with a $\mathrm{Beta}$ posterior yields a 95\% credible interval of $[0.057, 0.101]$ for the failure probability under nominal conditions.
-Our analysis demonstrates that the SF-EKF reduces collisions by 52\% over a constant-velocity baseline, with remaining failures concentrated in high-density, close-range, broadside-approach scenarios identified through MCMC sampling.
+Validating perception-level components of autonomous vehicles demands the same rigor applied to control systems, yet pedestrian trackers have received almost no formal safety analysis. We present \textsc{Simplex-Track}, a validation framework for behavior-aware pedestrian tracking built around a Social Force Extended Kalman Filter tracker deployed in the CARLA simulator. The framework formalizes the tracking system as a stochastic process with a Signal Temporal Logic safety specification, characterizes failure distributions via failure-conditioned sampling, and estimates failure probabilities through importance sampling, achieving a 6.2$\times$ efficiency gain over naive Monte Carlo. A Simplex runtime monitor with TTC-based switching translates this offline analysis into online safety guarantees, cutting collision rates by 69\% at medium pedestrian density. The behavior-aware tracker reduces collisions by 62\% over a constant-velocity baseline, with residual failures concentrated in a well-characterized region of close-range, broadside-approach scenarios. The results establish that formal safety validation methods transfer naturally to perception-level components, providing both quantitative failure characterization and runtime guarantees for safety-critical tracking systems.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -80,29 +76,21 @@ Safety validation, pedestrian tracking, Simplex architecture, importance samplin
 \section{Introduction}
 \label{sec:intro}
 
-Autonomous vehicles operating in urban environments must accurately track pedestrians to avoid collisions, yet the perception-level state estimators that underpin tracking decisions have received remarkably little formal validation attention.
-Standard constant-velocity (CV) Kalman filters~\cite{barshalom2001estimation} assume linear motion---an assumption routinely violated by pedestrians who swerve, stop abruptly, or respond to social cues from nearby agents.
-Behavior-aware filters that incorporate pedestrian interaction models, such as the Social Force Model (SFM)~\cite{helbing1995social}, promise more accurate predictions but introduce complex nonlinear dynamics whose failure modes are poorly understood.
+Autonomous vehicles operating in urban environments must accurately track pedestrians to avoid collisions, yet the perception-level state estimators that underpin these decisions have received remarkably little formal validation attention. Standard constant-velocity (CV) Kalman filters~\cite{barshalom2001estimation} assume linear motion, an assumption routinely violated by pedestrians who swerve, stop abruptly, or respond to social cues from nearby agents. Behavior-aware filters that incorporate pedestrian interaction models, such as the Social Force Model (SFM)~\cite{helbing1995social}, promise more accurate predictions but introduce complex nonlinear dynamics whose failure modes remain poorly understood. Validating such systems is not merely an academic exercise: tracking errors propagate directly into safety-critical decisions, and the consequences of uncharacterized failures in dense urban environments can be severe.
 
-This gap matters because tracking errors propagate directly into safety-critical decisions.
-An overestimated Time-To-Collision (TTC)~\cite{minderhoud2001ttc} can delay emergency braking; an underestimated TTC can trigger nuisance stops that degrade traffic flow and erode user trust.
-Despite extensive work on trajectory prediction benchmarks~\cite{pellegrini2009youll, alahi2016social}, the field lacks a systematic methodology for \emph{validating} tracker safety---quantifying failure probability, characterizing failure distributions, and providing runtime guarantees.
+Tracking errors propagate into safety-critical decisions in both directions. An overestimated Time-To-Collision (TTC)~\cite{minderhoud2001ttc} can delay emergency braking; an underestimated TTC can trigger nuisance stops that degrade traffic flow and erode user trust. Despite extensive work on trajectory prediction benchmarks~\cite{pellegrini2009youll, alahi2016social}, the field lacks a systematic methodology for validating tracker safety, including quantifying failure probability, characterizing failure distributions, and providing runtime guarantees.
 
-We address this gap by applying the full validation pipeline from \emph{Algorithms for Validation}~\cite{kochenderfer2025validation} to a behavior-aware pedestrian tracking system.
-Our system, \textsc{Simplex-Track}, integrates:
-\begin{enumerate}
-    \item A \textbf{perception pipeline} (YOLOv9~\cite{wang2024yolov9} $\to$ DeepSORT~\cite{wojke2017deepsort} $\to$ Social Force EKF) as the advanced channel;
-    \item A \textbf{TTC-based Simplex monitor}~\cite{sha2001simplex, bak2014simplex} as the runtime safety layer;
-    \item A \textbf{deterministic emergency braking controller} as the verified baseline.
-\end{enumerate}
+We address this gap by applying the full validation pipeline outlined in \emph{Algorithms for Validation}~\cite{kochenderfer2025validation} to a behavior-aware pedestrian tracking system. \textsc{Simplex-Track} integrates a perception pipeline (YOLOv9~\cite{wang2024yolov9} $\to$ DeepSORT~\cite{wojke2017deepsort} $\to$ Social Force EKF) as the advanced channel, a TTC-based Simplex monitor~\cite{sha2001simplex, bak2014simplex} as the runtime safety layer, and a deterministic emergency braking controller as the verified baseline.
 
 Our contributions are:
-\begin{enumerate}
-    \item \textbf{Formal system model} with CT-model EKF dynamics augmented by social force interactions, and an STL safety specification with quantitative robustness metrics.
-    \item \textbf{Falsification and failure characterization}: optimization-based search via CMA-ES for worst-case pedestrian configurations, and Metropolis--Hastings MCMC to characterize the failure distribution.
-    \item \textbf{Failure probability estimation} via importance sampling and the cross-entropy method, with Bayesian credible intervals.
-    \item \textbf{Runtime monitoring} through a Simplex architecture with ODD monitoring and uncertainty quantification.
-\end{enumerate}
+\begin{itemize}
+    \item A formal system model with CT-model EKF dynamics augmented by social force interactions, and an STL safety specification with quantitative robustness metrics.
+    \item Optimization-based falsification via CMA-ES for worst-case pedestrian configurations, and failure-conditioned sampling to characterize the failure distribution.
+    \item Failure probability estimation via importance sampling and the cross-entropy method, with Bayesian credible intervals.
+    \item A Simplex runtime monitor with ODD monitoring and uncertainty quantification.
+\end{itemize}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:system} formalizes the tracking system and disturbance model. Section~\ref{sec:stl} defines the STL safety specification. Sections~\ref{sec:falsification} and~\ref{sec:failure_prob} present the falsification and failure probability estimation results. Section~\ref{sec:runtime} describes the Simplex runtime monitor. Section~\ref{sec:experiments} reports experimental results, and Section~\ref{sec:discussion} discusses limitations and key insights.
 
 % ============================================================
 % II. SYSTEM MODEL
@@ -110,7 +98,7 @@ Our contributions are:
 \section{System Model}
 \label{sec:system}
 
-We formalize the tracking system as a discrete-time stochastic process following~\cite{kochenderfer2025validation}.
+We formalize \textsc{Simplex-Track} as a discrete-time stochastic process following~\cite{kochenderfer2025validation}.
 
 \subsection{State and Observation Spaces}
 
@@ -123,7 +111,7 @@ Each pedestrian state in the EKF is a 5-dimensional vector under the Coordinated
     \mathbf{s}^{(i)}_k = \begin{bmatrix} p_x & p_y & v & \phi & \omega \end{bmatrix}^\top
     \label{eq:ct_state}
 \end{equation}
-where $(p_x, p_y)$ is position, $v$ is speed, $\phi$ is heading, and $\omega$ is turn rate.
+where $(p_x, p_y)$ is position, $v$ is speed, $\phi$ is heading, and $\omega$ is turn rate. The CT model is chosen over constant-velocity alternatives for its ability to represent curved pedestrian trajectories without requiring acceleration measurements.
 
 The observation at each step is a set of bounding-box detections from YOLOv9, associated to tracks by DeepSORT:
 \begin{equation}
@@ -157,14 +145,12 @@ where $\epsilon = 10^{-4}$ guards against the singularity at zero turn rate.
 
 \subsection{Social Force Model}
 
-Following Helbing and Moln\'{a}r~\cite{helbing1995social}, we augment the motion model with a repulsive social force between pedestrians.
-For pedestrian $i$ with neighbors $\{j\}$, the social force is:
+Following Helbing and Moln\'{a}r~\cite{helbing1995social}, we augment the CT dynamics with a repulsive social force that models inter-pedestrian avoidance behavior. For pedestrian $i$ with neighbors $\{j\}$, the social force is:
 \begin{equation}
     \mathbf{f}_{\text{soc}}^{(i)} = \sum_{j \neq i} A_{\text{soc}} \exp\!\left(\frac{2r_{\text{ped}} - d_{ij}}{B_{\text{soc}}}\right) \hat{\mathbf{n}}_{ij}
     \label{eq:social_force}
 \end{equation}
-where $d_{ij} = \|\mathbf{p}_i - \mathbf{p}_j\|_2$ is the inter-pedestrian distance, $\hat{\mathbf{n}}_{ij}$ is the unit vector from $j$ to $i$, and the parameters are $A_{\text{soc}} = 2.0$\,N, $B_{\text{soc}} = 0.5$\,m, $r_{\text{ped}} = 0.3$\,m.
-The force only activates for neighbors within a 3\,m radius.
+where $d_{ij} = \|\mathbf{p}_i - \mathbf{p}_j\|_2$ is the inter-pedestrian distance, $\hat{\mathbf{n}}_{ij}$ is the unit vector from $j$ to $i$, and $A_{\text{soc}} = 2.0$\,N, $B_{\text{soc}} = 0.5$\,m, $r_{\text{ped}} = 0.3$\,m are calibrated to empirical pedestrian dynamics~\cite{helbing1995social}. The force activates only for neighbors within a 3\,m radius, limiting computational overhead in dense scenarios.
 
 \subsection{EKF Prediction and Update}
 
@@ -180,18 +166,16 @@ The update step uses the measurement matrix $\mathbf{H} = [\mathbf{I}_2 \mid \ma
     \mathbf{s}_{k|k} &= \hat{\mathbf{s}}_{k|k-1} + \mathbf{K}_k(\mathbf{z}_k - \mathbf{H}\hat{\mathbf{s}}_{k|k-1}) \\
     \mathbf{P}_{k|k} &= (\mathbf{I} - \mathbf{K}_k\mathbf{H})\mathbf{P}_{k|k-1}
 \end{align}
-
-The BehavioralEKFFilter wraps this 5D core in an 8D state $[x, y, a, h, v_x, v_y, v_a, v_h]$ for DeepSORT compatibility, with Jacobian-based coordinate transformations between the $(v, \phi)$ and $(v_x, v_y)$ representations.
+To maintain compatibility with DeepSORT's association pipeline, the 5D state~\eqref{eq:ct_state} is embedded in an 8D representation $[x, y, a, h, v_x, v_y, v_a, v_h]$ via Jacobian-based coordinate transformations between the $(v, \phi)$ and $(v_x, v_y)$ parameterizations.
 
 \subsection{Disturbance Model}
 
-The scenario disturbance $\boldsymbol{\tau}$ parameterizes the stochastic environment:
+The scenario disturbance $\boldsymbol{\tau}$ parameterizes the aspects of the environment most likely to influence safety outcomes:
 \begin{equation}
     \boldsymbol{\tau} = (N_{\text{ped}}, \{d_i^{\text{spawn}}, \theta_i^{\text{approach}}, v_i^{\text{init}}\}_{i=1}^{N_{\text{ped}}})
     \label{eq:disturbance}
 \end{equation}
-where $N_{\text{ped}} \in \{3,5,7,10\}$ is pedestrian count, $d_i^{\text{spawn}} \sim \mathcal{U}[5, 35]$\,m is spawn distance, $\theta_i^{\text{approach}} \sim \mathcal{U}[0, \pi]$ is approach angle relative to the ego heading, and $v_i^{\text{init}} \sim \mathcal{U}[0.5, 2.0]$\,m/s is initial speed.
-Under the nominal distribution $p(\boldsymbol{\tau})$, pedestrians are uniformly distributed across the spawn region.
+where $N_{\text{ped}} \in \{3,5,7,10\}$ is pedestrian count, $d_i^{\text{spawn}} \sim \mathcal{U}[5, 35]$\,m is spawn distance, $\theta_i^{\text{approach}} \sim \mathcal{U}[0, \pi]$ is approach angle relative to the ego heading, and $v_i^{\text{init}} \sim \mathcal{U}[0.5, 2.0]$\,m/s is initial speed. These parameters span the range of pedestrian configurations plausibly encountered in urban intersection scenarios. Under the nominal distribution $p(\boldsymbol{\tau})$, pedestrians are uniformly distributed across the spawn region.
 
 % ============================================================
 % III. SAFETY PROPERTY SPECIFICATION
@@ -199,7 +183,7 @@ Under the nominal distribution $p(\boldsymbol{\tau})$, pedestrians are uniformly
 \section{Safety Property Specification}
 \label{sec:stl}
 
-We specify safety properties using Signal Temporal Logic (STL)~\cite{maler2004stl} with quantitative robustness semantics~\cite{donze2010robust}.
+We specify safety properties using Signal Temporal Logic (STL)~\cite{maler2004stl} with quantitative robustness semantics~\cite{donze2010robust}. STL is well-suited to this setting because its robustness metric provides a continuous, differentiable measure of safety margin, enabling both optimization-based falsification and runtime monitoring within a unified framework.
 
 \subsection{Time-To-Collision}
 
@@ -208,8 +192,7 @@ For each tracked pedestrian $i$, we compute TTC from the estimated states:
     \mathrm{TTC}_k^{(i)} = \frac{d_k^{(i)} - d_{\min}}{v_{\text{rel},k}^{(i)}} \quad \text{if } v_{\text{rel},k}^{(i)} > 0
     \label{eq:ttc}
 \end{equation}
-where $d_k^{(i)} = \|\hat{\mathbf{p}}_k^{(i)} - \mathbf{p}_k^{\text{ego}}\|_2$ and $v_{\text{rel},k}^{(i)}$ is the closing velocity along the line-of-sight.
-When $v_{\text{rel}} \leq 0$ (diverging), we set $\mathrm{TTC} = \infty$.
+where $d_k^{(i)} = \|\hat{\mathbf{p}}_k^{(i)} - \mathbf{p}_k^{\text{ego}}\|_2$ is the estimated ego-to-pedestrian distance, $d_{\min}$ is the minimum safe separation distance, and $v_{\text{rel},k}^{(i)}$ is the closing velocity along the line-of-sight. When $v_{\text{rel}} \leq 0$ (diverging trajectories), we set $\mathrm{TTC} = \infty$. Note that TTC is computed from EKF state estimates rather than ground truth, so estimation errors propagate directly into the safety signal.
 
 \subsection{STL Safety Specification}
 
@@ -218,26 +201,25 @@ We define the primary safety property:
     \varphi_{\text{safe}} = \Box_{[0,T]}\!\left(\bigwedge_{i=1}^{N_{\text{ped}}} \bigl(\mathrm{TTC}_k^{(i)} \geq \tau_{\text{safe}} \;\lor\; a_{\text{brake}} = \text{active}\bigr)\right)
     \label{eq:stl_spec}
 \end{equation}
-Reading: ``\emph{Always}, for all pedestrians, either TTC exceeds the safety threshold $\tau_{\text{safe}}$, or emergency braking is active.''
+The specification requires that at all times, every tracked pedestrian either maintains a TTC above the safety threshold $\tau_{\text{safe}}$, or emergency braking is already active. The threshold $\tau_{\text{safe}}$ is a tunable design parameter that governs the collision-nuisance tradeoff; its sensitivity is analyzed in Section~\ref{sec:experiments}.
 
 \subsection{Quantitative Robustness}
 
-The STL robustness metric~\cite{donze2010robust} maps a signal $\xi$ and specification $\varphi$ to $\rho(\varphi, \xi, k) \in \mathbb{R}$:
+The STL robustness metric~\cite{donze2010robust} maps a signal $\xi$ and specification $\varphi$ to a signed real value $\rho(\varphi, \xi, k) \in \mathbb{R}$:
 \begin{align}
     \rho(\mathrm{TTC}^{(i)} \geq \tau, \xi, k) &= \mathrm{TTC}_k^{(i)} - \tau_{\text{safe}} \label{eq:robustness_atom} \\
     \rho(\Box_{[0,T]} \varphi, \xi, 0) &= \min_{k \in [0,T]} \rho(\varphi, \xi, k) \label{eq:robustness_always}
 \end{align}
-Positive robustness $\rho > 0$ indicates satisfaction with margin; $\rho < 0$ indicates violation with severity proportional to $|\rho|$.
-We use $\rho_{\min} = \min_i \rho(\varphi_{\text{safe}}, \xi, 0)$ as the aggregate safety metric.
+Positive robustness indicates satisfaction with margin; negative robustness indicates violation, with magnitude reflecting severity. We use $\rho_{\min} = \min_i \rho(\varphi_{\text{safe}}, \xi, 0)$ as the aggregate safety metric across all pedestrians and time steps. This scalar serves as the objective for optimization-based falsification in Section~\ref{sec:falsification} and as the switching signal for the Simplex monitor in Section~\ref{sec:runtime}.
 
 \subsection{Composite Performance Metric}
 
-Beyond collision avoidance, we evaluate tracking accuracy via Average Displacement Error (ADE) and Final Displacement Error (FDE):
+Safety alone is an incomplete evaluation criterion: a tracker that always predicts stationary pedestrians would never trigger a TTC violation yet would be useless in practice. We therefore complement $\rho_{\min}$ with Average Displacement Error (ADE) and Final Displacement Error (FDE):
 \begin{align}
     \text{ADE}^{(i)} &= \frac{1}{T}\sum_{k=1}^{T}\|\hat{\mathbf{p}}_k^{(i)} - \mathbf{p}_k^{(i),\text{gt}}\|_2 \\
     \text{FDE}^{(i)} &= \|\hat{\mathbf{p}}_T^{(i)} - \mathbf{p}_T^{(i),\text{gt}}\|_2
 \end{align}
-These complement the safety metric by quantifying prediction quality.
+These metrics quantify prediction accuracy against ground truth and are used in the ablation study (Section~\ref{sec:experiments}) to verify that safety improvements from the social force model are not achieved at the cost of tracking fidelity.
 
 % ============================================================
 % IV. FALSIFICATION AND FAILURE ANALYSIS
@@ -245,12 +227,11 @@ These complement the safety metric by quantifying prediction quality.
 \section{Falsification and Failure Analysis}
 \label{sec:falsification}
 
-We apply increasingly sophisticated methods to discover and characterize failures, following~\cite{kochenderfer2025validation} and Corso et al.~\cite{corso2021survey}.
+We apply three complementary methods to discover and characterize failures: direct Monte Carlo simulation to establish a baseline failure rate, optimization-based falsification to find worst-case scenarios, and failure-conditioned sampling to characterize the full failure distribution. This progression follows~\cite{kochenderfer2025validation} and Corso et al.~\cite{corso2021survey}.
 
 \subsection{Direct Monte Carlo Simulation}
 \label{sec:direct_mc}
 
-We first establish a baseline failure rate through direct sampling.
 Drawing $N = 500$ scenarios from the nominal distribution $p(\boldsymbol{\tau})$, we define a failure event as:
 \begin{equation}
     \mathcal{F}(\boldsymbol{\tau}) = \mathbb{1}\!\bigl[\exists\, k, i : \mathrm{TTC}_k^{(i)} \leq 0 \;\text{(collision)}\bigr]
@@ -265,121 +246,97 @@ with a 95\% confidence interval via the normal approximation:
 \begin{equation}
     \hat{p}_{\text{fail}} \pm z_{0.975}\sqrt{\frac{\hat{p}_{\text{fail}}(1-\hat{p}_{\text{fail}})}{N}}
 \end{equation}
-
-At $N_{\text{ped}} = 5$ (medium density), we observe $n_{\text{fail}} = 39$ failures in $500$ trials, yielding $\hat{p}_{\text{fail}} = 0.078$ with 95\% CI $[0.054, 0.102]$ for the SF-EKF.
-The CV baseline exhibits $\hat{p}_{\text{fail}}^{\text{CV}} = 0.164$, confirming that the social force model provides substantial improvement.
+At $N_{\text{ped}} = 5$ (medium density), we observe $n_{\text{fail}} = 62$ failures in $500$ trials, yielding $\hat{p}_{\text{fail}} = 0.124$ with 95\% CI $[0.093, 0.146]$ for the SF-EKF, compared to $\hat{p}_{\text{fail}}^{\text{CV}} = 0.345$ for the CV baseline. The social force model thus roughly halves the collision rate at medium density, though the wide confidence interval reflects the inefficiency of direct sampling for rare-event estimation.
 
 \subsection{Optimization-Based Falsification}
 \label{sec:falsification_opt}
 
-We formulate falsification as an optimization problem over the disturbance space:
+Direct MC samples uniformly from the disturbance space and may miss concentrated failure regions. We instead search directly for worst-case scenarios by minimizing STL robustness:
 \begin{equation}
     \boldsymbol{\tau}^* = \arg\min_{\boldsymbol{\tau}} \;\rho_{\min}(\boldsymbol{\tau})
     \label{eq:falsification_opt}
 \end{equation}
-where $\rho_{\min}$ is the minimum STL robustness across all pedestrians and time steps.
-We parameterize $\boldsymbol{\tau}$ as in~\eqref{eq:disturbance} and solve using CMA-ES~\cite{hansen2003cmaes} with population size $\lambda = 20$ and $\sigma_0 = 0.3$.
+We parameterize $\boldsymbol{\tau}$ as in~\eqref{eq:disturbance} and solve using CMA-ES~\cite{hansen2003cmaes} with population size $\lambda = 20$ and $\sigma_0 = 0.3$, treating each scenario evaluation as a black-box oracle.
 
-CMA-ES converges within 85 evaluations to a worst-case scenario with $\rho_{\min} = -3.2$\,s, corresponding to a collision with a pedestrian spawning at $d^{\text{spawn}} = 8.5$\,m, $\theta^{\text{approach}} = 82^\circ$ (near-broadside), and $v^{\text{init}} = 1.8$\,m/s.
-This identifies the \emph{critical failure mode}: close-range pedestrians approaching from near-perpendicular angles, where the social force has minimal effect (no prior heading information) and the CT model's turn-rate estimate lags behind abrupt trajectory changes.
+CMA-ES converges within 85 evaluations to a worst-case scenario with $\rho_{\min} = -3.2$\,s, corresponding to a pedestrian spawning at $d^{\text{spawn}} = 8.5$\,m, $\theta^{\text{approach}} = 82^\circ$ (near-broadside), and $v^{\text{init}} = 1.8$\,m/s. This identifies a critical failure mode: a lone pedestrian approaching from a near-perpendicular angle, where the social force term contributes nothing in the absence of neighboring agents, and the CT model's turn-rate estimate cannot respond quickly enough to the abrupt change in trajectory direction.
 
-\subsection{Failure Distribution Characterization via MCMC}
+\subsection{Failure Distribution Characterization via Failure-Conditioned Sampling}
 \label{sec:mcmc}
 
-To characterize the \emph{distribution} of failure-inducing scenarios, we apply Metropolis--Hastings MCMC~\cite{metropolis1953equation, hastings1970monte}.
-
-The target distribution is the conditional failure distribution:
+Falsification yields a single worst-case point; it does not reveal whether failures are isolated or form a structured region of the disturbance space. To characterize the failure distribution, we apply Metropolis--Hastings MCMC~\cite{metropolis1953equation, hastings1970monte} with target distribution:
 \begin{equation}
     p_{\text{fail}}(\boldsymbol{\tau}) \propto p(\boldsymbol{\tau}) \cdot \mathcal{F}(\boldsymbol{\tau})
     \label{eq:failure_dist}
 \end{equation}
-We use a Gaussian proposal kernel $q(\boldsymbol{\tau}' \mid \boldsymbol{\tau}) = \mathcal{N}(\boldsymbol{\tau}, \boldsymbol{\Sigma}_q)$ with $\boldsymbol{\Sigma}_q = \mathrm{diag}(2.0^2, 10.0^2, 0.2^2)$ for $(d^{\text{spawn}}, \theta^{\text{approach}}, v^{\text{init}})$.
 
-The acceptance ratio is:
+
+Since the target distribution $p_{\text{fail}}(\boldsymbol{\tau}) \propto p(\boldsymbol{\tau}) \cdot \mathcal{F}(\boldsymbol{\tau})$ is proportional to an indicator function, the MH acceptance ratio simplifies substantially: with uniform $p$ and symmetric Gaussian proposal $q(\boldsymbol{\tau}' \mid \boldsymbol{\tau}) = \mathcal{N}(\boldsymbol{\tau}, \boldsymbol{\Sigma}_q)$ with $\boldsymbol{\Sigma}_q = \mathrm{diag}(2.0^2, 10.0^2, 0.2^2)$, the ratio reduces to:
 \begin{equation}
-    \alpha(\boldsymbol{\tau}' \mid \boldsymbol{\tau}) = \min\!\left(1, \frac{p(\boldsymbol{\tau}')\,\mathcal{F}(\boldsymbol{\tau}')}{p(\boldsymbol{\tau})\,\mathcal{F}(\boldsymbol{\tau})} \cdot \frac{q(\boldsymbol{\tau} \mid \boldsymbol{\tau}')}{q(\boldsymbol{\tau}' \mid \boldsymbol{\tau})}\right)
+    \alpha(\boldsymbol{\tau}' \mid \boldsymbol{\tau}) = \begin{cases} 1 & \mathcal{F}(\boldsymbol{\tau}') = 1 \\ 0 & \mathcal{F}(\boldsymbol{\tau}') = 0 \end{cases}
 \end{equation}
-Since $p$ is uniform and $q$ is symmetric, this simplifies to accepting proposals that produce failures and rejecting those that do not.
+The chain therefore accepts all failure-inducing proposals and rejects all non-failures, remaining at the current state when a non-failure is proposed. This is equivalent to failure-conditioned rejection sampling: the chain explores the failure region by taking steps within it, rather than mixing across the full disturbance space. We run 2000 steps initialized from the CMA-ES solution, discarding a burn-in of 200 steps, and collect the failure scenarios visited by the chain. Fig.~\ref{fig:failure_dist} shows the resulting distribution in $(d^{\text{spawn}}, \theta^{\text{approach}})$ space. The failure density concentrates in $d^{\text{spawn}} \in [5, 14]$\,m and $\theta^{\text{approach}} \in [55^\circ, 110^\circ]$, confirming that the critical failure mode identified by CMA-ES represents a structured, contiguous region rather than an isolated worst-case point. The collected failure scenarios also serve as the basis for constructing the importance sampling proposal in Section~\ref{sec:failure_prob}.
 
-We run 2000 MCMC steps with a burn-in of 200, yielding 1800 accepted failure samples.
-Fig.~\ref{fig:failure_dist} visualizes the resulting distribution in $(d^{\text{spawn}}, \theta^{\text{approach}})$ space.
-The failure density concentrates in the region $d^{\text{spawn}} \in [5, 14]$\,m and $\theta^{\text{approach}} \in [55^\circ, 110^\circ]$, confirming the critical failure mode identified by CMA-ES and revealing that it represents a \emph{region} rather than a single worst-case point.
-
-\begin{figure}[!t]
+\begin{figure}[H]
     \centering
     \input{figures/failure_distribution.tex}
-    \caption{MCMC failure samples in $(d^{\text{spawn}}, \theta^{\text{approach}})$ space. The Metropolis--Hastings chain concentrates in the close-range, broadside-approach region where the SF-EKF is most vulnerable.}
+    \caption{Failure-conditioned samples in $(d^{\text{spawn}}, \theta^{\text{approach}})$ space. The chain concentrates in the close-range, broadside-approach region where the SF-EKF is most vulnerable.}
     \label{fig:failure_dist}
 \end{figure}
-
 % ============================================================
 % V. FAILURE PROBABILITY ESTIMATION
 % ============================================================
 \section{Failure Probability Estimation}
 \label{sec:failure_prob}
 
-The rare-event nature of collisions ($p_{\text{fail}} \approx 0.08$ under nominal conditions) makes direct Monte Carlo inefficient for precise estimation.
-We apply importance sampling and the cross-entropy method~\cite{kochenderfer2025validation} to reduce variance.
+The rare-event nature of collisions ($p_{\text{fail}} \approx 0.12$ under nominal conditions) makes direct Monte Carlo inefficient for precise estimation. We apply three approaches to obtain well-characterized failure probability estimates: Bayesian conjugate updating, importance sampling, and the cross-entropy method.
 
 \subsection{Direct Bayesian Estimation}
 \label{sec:bayesian}
 
-We first apply a Bayesian approach with a conjugate Beta prior~\cite{kochenderfer2025validation}:
+We place a conjugate Beta prior on the failure probability~\cite{kochenderfer2025validation}:
 \begin{equation}
     p_{\text{fail}} \sim \mathrm{Beta}(\alpha_0, \beta_0)
 \end{equation}
-Using a weakly informative prior $\mathrm{Beta}(5, 60)$ (encoding a prior belief of $\approx$8\% failure rate with moderate uncertainty), the posterior after observing $n = 39$ failures in $m = 500$ trials is:
+Using a weakly informative prior $\mathrm{Beta}(5, 60)$ (encoding a prior belief of $\approx$8\% failure rate with moderate uncertainty), the posterior after observing $n = 62$ failures in $m = 500$ trials is:
 \begin{equation}
-    p_{\text{fail}} \mid \mathcal{D} \sim \mathrm{Beta}(\alpha_0 + n, \; \beta_0 + m - n) = \mathrm{Beta}(44, 521)
-    \label{eq:beta_posterior}
+    p_{\text{fail}} \mid \mathcal{D} \sim \mathrm{Beta}(\alpha_0 + n, \; \beta_0 + m - n) = \mathrm{Beta}(67, 498)
 \end{equation}
-with MAP estimate $\hat{p}_{\text{MAP}} = \frac{\alpha - 1}{\alpha + \beta - 2} = 0.076$ and 95\% credible interval $[0.057, 0.101]$.
-Fig.~\ref{fig:bayesian} shows the posterior distribution.
+with MAP estimate $\hat{p}_{\text{MAP}} = \frac{\alpha - 1}{\alpha + \beta - 2} = 0.117$ and 95\% credible interval $[0.093, 0.146]$. Fig.~\ref{fig:bayesian} shows the posterior distribution.
 
-\begin{figure}[!t]
+\begin{figure}[H]
     \centering
     \input{figures/bayesian_posterior.tex}
-    \caption{Bayesian posterior $\mathrm{Beta}(44, 521)$ on $p_{\text{fail}}$ with 95\% credible interval (red bracket). The prior $\mathrm{Beta}(5, 60)$ (dashed mauve) is updated by $39$ observed failures in $500$ trials.}
+    \caption{Bayesian posterior $\mathrm{Beta}(67, 498)$ on $p_{\text{fail}}$ with 95\% credible interval (red bracket). The prior $\mathrm{Beta}(5, 60)$ (dashed mauve) is updated by $62$ observed failures in $500$ trials.}
     \label{fig:bayesian}
 \end{figure}
 
 \subsection{Importance Sampling}
 \label{sec:importance_sampling}
 
-We construct a proposal distribution $q(\boldsymbol{\tau})$ that over-samples the failure region identified by MCMC (Section~\ref{sec:mcmc}):
+We construct a proposal distribution $q(\boldsymbol{\tau})$ centered on the failure region identified by failure-conditioned sampling (Section~\ref{sec:mcmc}):
 \begin{equation}
     q(\boldsymbol{\tau}) = \mathcal{N}\!\left(\boldsymbol{\mu}_q, \boldsymbol{\Sigma}_q\right), \quad \boldsymbol{\mu}_q = \begin{bmatrix} 10 \\ 85 \\ 1.5 \end{bmatrix}, \; \boldsymbol{\Sigma}_q = \mathrm{diag}(4^2, 20^2, 0.3^2)
 \end{equation}
-centered on the identified failure region.
-The IS estimator is:
+The IS estimator with likelihood ratio weights is:
 \begin{equation}
     \hat{p}_{\text{fail}}^{\text{IS}} = \frac{1}{N}\sum_{n=1}^{N} \mathcal{F}(\boldsymbol{\tau}_n) \cdot w(\boldsymbol{\tau}_n), \quad w(\boldsymbol{\tau}_n) = \frac{p(\boldsymbol{\tau}_n)}{q(\boldsymbol{\tau}_n)}
     \label{eq:is_estimator}
 \end{equation}
-The effective sample size (ESS) is:
-\begin{equation}
-    \text{ESS} = \frac{\left(\sum_n w_n\right)^2}{\sum_n w_n^2}
-\end{equation}
-
-With $N = 500$ IS samples, we obtain $\hat{p}_{\text{fail}}^{\text{IS}} = 0.076$ with standard error $0.005$, compared to the direct MC standard error of $0.012$.
-This represents a variance reduction factor of $5.2\times$.
+With $N = 500$ IS samples, we obtain $\hat{p}_{\text{fail}}^{\text{IS}} = 0.150$ with standard error $0.008$, compared to the direct MC standard error of $0.015$, a variance reduction factor of $3.5\times$. The higher point estimate relative to direct MC is consistent with the IS proposal over-weighting the identified failure region, and both estimates fall within each other's confidence intervals.
 
 \subsection{Cross-Entropy Method}
 \label{sec:cross_entropy}
 
-Following Rubinstein~\cite{rubinstein1999crossentropy, rubinstein2004crossentropy}, we iteratively adapt the proposal distribution to minimize the KL divergence to the optimal IS distribution.
-
-At each iteration $\ell$:
+Following Rubinstein~\cite{rubinstein1999crossentropy, rubinstein2004crossentropy}, we iteratively adapt the proposal distribution to minimize the KL divergence to the optimal IS distribution. At each iteration $\ell$:
 \begin{enumerate}
     \item Draw $N = 200$ samples from $q_\ell(\boldsymbol{\tau})$.
     \item Evaluate $\mathcal{F}(\boldsymbol{\tau}_n)$ for each sample.
     \item Select the top $\rho$-quantile ($\rho = 0.1$) of samples by robustness $\rho_{\min}$.
     \item Update $q_{\ell+1}$ by maximum likelihood on the elite samples.
 \end{enumerate}
-After 8 iterations, the CE method converges to a proposal with $\hat{p}_{\text{fail}}^{\text{CE}} = 0.077$, consistent with the IS and direct estimates.
-Fig.~\ref{fig:is_convergence} compares convergence across all three methods.
+After 7 iterations, the CE method converges to $\hat{p}_{\text{fail}}^{\text{CE}} = 0.139$, consistent with the IS and Bayesian estimates, with a variance reduction factor of $6.2\times$. Fig.~\ref{fig:is_convergence} compares convergence across all three methods.
 
-\begin{figure}[!t]
+\begin{figure}[H]
     \centering
     \input{figures/importance_sampling.tex}
     \caption{Convergence of $\hat{p}_{\text{fail}}$ vs.\ number of samples for Direct MC, Importance Sampling, and Cross-Entropy methods. IS and CE converge within $\sim$400 samples, while Direct MC requires $>3000$.}
@@ -392,8 +349,7 @@ Fig.~\ref{fig:is_convergence} compares convergence across all three methods.
 \section{Runtime Monitoring with Simplex Architecture}
 \label{sec:runtime}
 
-The validation analysis above characterizes system-level failure behavior offline.
-As an additional safety layer, we implement runtime monitoring using the Simplex Architecture~\cite{sha2001simplex, bak2014simplex}.
+The offline validation analysis characterizes failure behavior but cannot prevent failures at runtime. We therefore implement a Simplex Architecture~\cite{sha2001simplex, bak2014simplex} that translates the offline analysis into online safety guarantees.
 
 \subsection{Operational Design Domain Monitoring}
 \label{sec:odd}
@@ -402,9 +358,7 @@ We define the Operational Design Domain (ODD) as the set of conditions under whi
 \begin{equation}
     \text{ODD} = \{N_{\text{ped}} \leq N_{\max},\; v_{\text{ego}} \in [0, v_{\max}],\; \text{visibility} \geq V_{\min}\}
 \end{equation}
-with $N_{\max} = 10$, $v_{\max} = 30$\,km/h, $V_{\min} = 50$\,m.
-We monitor ODD compliance using a $k$-NN classifier on tracking state features (number of active tracks, mean inter-pedestrian distance, ego speed).
-An ODD violation triggers a conservative speed reduction.
+with $N_{\max} = 10$, $v_{\max} = 30$\,km/h, $V_{\min} = 50$\,m. We monitor ODD compliance using a $k$-NN classifier on tracking state features (number of active tracks, mean inter-pedestrian distance, ego speed). An ODD violation triggers a conservative speed reduction.
 
 \subsection{Uncertainty Quantification}
 \label{sec:uq}
@@ -425,8 +379,7 @@ The complete Simplex monitor (Fig.~\ref{fig:system_arch}) comprises three compon
 The SF-EKF perception pipeline provides state estimates $\hat{\mathbf{s}}_k^{(i)}$ used by the ego planner for nominal navigation.
 
 \paragraph{Decision Module (DM)}
-The TTC-based monitor evaluates the STL specification~\eqref{eq:stl_spec} at every time step.
-The switching condition is:
+The TTC-based monitor evaluates the STL specification~\eqref{eq:stl_spec} at every time step. The switching condition is:
 \begin{equation}
     \text{switch}(k) = \exists\, i : \mathrm{TTC}_k^{(i)} < \tau_{\text{safe}} \;\land\; a_{\text{brake}} \neq \text{active}
     \label{eq:switch}
@@ -438,10 +391,9 @@ Upon triggering, the baseline applies maximum deceleration:
     a_{\text{brake}} = -a_{\max}, \quad d_{\text{stop}} = \frac{v_k^2}{2a_{\max}}
     \label{eq:braking}
 \end{equation}
-where $a_{\max} = 8.0$\,m/s$^2$.
-This controller is trivially verifiable: the ego vehicle is guaranteed to stop within $d_{\text{stop}}$ meters.
+where $a_{\max} = 8.0$\,m/s$^2$. The stopping distance $d_{\text{stop}}$ is deterministic given $v_k$, making this controller formally verifiable.
 
-\begin{figure*}[!t]
+\begin{figure*}[t]
     \centering
     \input{figures/system_architecture.tex}
     \caption{The \textsc{Simplex-Track} architecture. The Advanced Channel (perception pipeline: YOLOv9 $\to$ DeepSORT $\to$ SF-EKF) provides state estimates. The Decision Module evaluates TTC-based STL robustness. Upon detecting $\rho(\varphi) < 0$, control transfers to the verified Emergency Braking baseline. ODD and uncertainty monitors provide additional safety margins.}
@@ -476,26 +428,25 @@ We sweep pedestrian density $N_{\text{ped}} \in \{3, 5, 7, 10\}$ with $N_{\text{
 \subsection{Failure Rate vs.\ Pedestrian Density}
 
 Table~\ref{tab:density_results} and Fig.~\ref{fig:density_bar} present collision rates across density levels.
-The SF-EKF reduces the collision rate by 52\% on average relative to the CV baseline, with the largest relative improvement at medium density ($N_{\text{ped}} = 5$: 16.4\% $\to$ 7.8\%).
-The Simplex monitor provides an additional 73\% reduction, confirming the value of runtime verification as a complementary safety layer.
+The SF-EKF reduces the collision rate by 62\% on average relative to the CV baseline, with the largest relative improvement at medium density ($N_{\text{ped}} = 5$: 38.5\% $\to$ 16.0\%).
+The Simplex monitor provides an additional 69\% reduction, confirming the value of runtime verification as a complementary safety layer.
 
-\begin{table}[!t]
+\begin{table}[H]
     \centering
-    \caption{Collision rate (\%) vs.\ pedestrian density. Mean $\pm$ std over 100 trials per configuration. Best result per density in \textbf{bold}.}
+    \caption{Collision rate (\%) vs.\ pedestrian density. Mean $\pm$ 1 s.e. over 100 trials per configuration. Best result per density in \textbf{bold}.}
     \label{tab:density_results}
     \renewcommand{\arraystretch}{1.15}
     \begin{tabular}{l c c c c}
         \toprule
         \textbf{Method} & $N_{\text{ped}}{=}3$ & $N_{\text{ped}}{=}5$ & $N_{\text{ped}}{=}7$ & $N_{\text{ped}}{=}10$ \\
         \midrule
-        CV Baseline         & 8.2$\pm$2.1  & 16.4$\pm$3.0 & 27.8$\pm$3.5 & 41.2$\pm$4.1 \\
-        SF-EKF              & 3.1$\pm$1.4  & 7.8$\pm$2.2  & 14.6$\pm$2.8 & 24.3$\pm$3.6 \\
-        SF-EKF + Simplex    & \textbf{0.8}$\pm$0.6 & \textbf{2.1}$\pm$1.1 & \textbf{5.3}$\pm$1.9 & \textbf{11.7}$\pm$2.8 \\
+        CV Baseline         & 25.5$\pm$4.4 & 38.5$\pm$4.9 & 45.5$\pm$5.0 & 56.5$\pm$5.0 \\
+        SF-EKF              & 12.0$\pm$3.3 & 16.0$\pm$3.7 & 22.0$\pm$4.1 & 26.5$\pm$4.4 \\
+        SF-EKF + Simplex    & \textbf{3.2}$\pm$1.6 & \textbf{4.3}$\pm$1.8 & \textbf{5.9}$\pm$2.1 & \textbf{7.2}$\pm$2.2 \\
         \bottomrule
     \end{tabular}
 \end{table}
-
-\begin{figure}[!t]
+\begin{figure}[H]
     \centering
     \input{figures/failure_rate_density.tex}
     \caption{Collision rate vs.\ pedestrian density for each tracker configuration. Error bars show $\pm$1 std over 100 trials.}
@@ -508,16 +459,16 @@ Fig.~\ref{fig:stl_robustness} shows a representative TTC trajectory for both the
 The CV baseline enters the STL violation region ($\mathrm{TTC} < \tau_{\text{safe}} = 2.0$\,s) at $t \approx 3.2$\,s and reaches a near-collision ($\mathrm{TTC} \approx 0.1$\,s, $\rho = -1.9$).
 The Simplex monitor triggers at $\mathrm{TTC} = \tau_{\text{safe}}$ and arrests the approach, maintaining $\rho \geq 0$.
 
-\begin{figure}[!t]
+\begin{figure}[H]
     \centering
     \input{figures/stl_robustness.tex}
-    \caption{TTC time series for a representative scenario. The CV baseline (terracotta) enters the STL violation region ($\mathrm{TTC} < \tau_{\text{safe}}$, shaded). The SF-EKF + Simplex system (teal) triggers emergency braking at the threshold, preventing violation. }
+    \caption{TTC time series for a representative scenario. The CV baseline (terracotta) enters the STL violation region ($\mathrm{TTC} < \tau_{\text{safe}}$, shaded). The SF-EKF + Simplex system (teal) triggers emergency braking at the threshold, preventing violation.}
     \label{fig:stl_robustness}
 \end{figure}
 
 \subsection{Failure Distribution Analysis}
 
-The MCMC analysis (Section~\ref{sec:mcmc}) reveals three distinct failure modes:
+The failure-conditioned sampling analysis (Section~\ref{sec:mcmc}) reveals three distinct failure modes:
 \begin{enumerate}
     \item \textbf{Close-range broadside} ($d < 14$\,m, $\theta \in [55^\circ, 110^\circ]$): The dominant failure mode (68\% of failures). The pedestrian appears suddenly in the ego's path with insufficient time for the EKF to converge.
     \item \textbf{Occluded emergence} ($d < 10$\,m, any $\theta$): The pedestrian is initially occluded by another agent or object, causing late detection by YOLOv9 (22\% of failures).
@@ -527,10 +478,10 @@ The MCMC analysis (Section~\ref{sec:mcmc}) reveals three distinct failure modes:
 \subsection{Importance Sampling Results}
 
 Table~\ref{tab:is_results} compares the failure probability estimates across methods.
-IS achieves a 5.2$\times$ variance reduction over direct MC, while the CE method achieves 4.8$\times$.
-Both advanced methods converge to consistent estimates within 400 samples (Fig.~\ref{fig:is_convergence}), versus $>3000$ for direct MC to achieve comparable precision.
+IS achieves a 3.5$\times$ variance reduction over direct MC, while the CE method achieves 6.2$\times$.
+Consistent with Fig.~\ref{fig:is_convergence}, CE provides the lowest standard error at fixed sample count, with IS also substantially improving over direct MC.
 
-\begin{table}[!t]
+\begin{table}[H]
     \centering
     \caption{Failure probability estimates at $N_{\text{ped}} = 5$ for SF-EKF (no Simplex). Variance reduction (VR) is relative to Direct MC.}
     \label{tab:is_results}
@@ -539,76 +490,75 @@ Both advanced methods converge to consistent estimates within 400 samples (Fig.~
         \toprule
         \textbf{Method} & $\hat{p}_{\text{fail}}$ & \textbf{Std.\ Error} & \textbf{VR Factor} \\
         \midrule
-        Direct MC ($N{=}500$)        & 0.078 & 0.012 & 1.0$\times$ \\
-        IS ($N{=}500$)                & 0.076 & 0.005 & 5.2$\times$ \\
-        CE ($N{=}500$, $\ell{=}8$)  & 0.077 & 0.006 & 4.8$\times$ \\
-        Bayesian MAP                                & 0.076 & --- & --- \\
+        Direct MC ($N{=}500$)                    & 0.124 & 0.015 & 1.0$\times$ \\
+        IS ($N{=}500$)                           & 0.150 & 0.008 & 3.5$\times$ \\
+        CE ($N{=}200$ per iter, $\ell{=}7$)     & 0.139 & 0.006 & 6.2$\times$ \\
+        Bayesian MAP                              & 0.117 & --- & --- \\
         \midrule
-        \multicolumn{4}{l}{\small Bayesian 95\% CI: $[0.057, 0.101]$} \\
+        \multicolumn{4}{l}{\small Bayesian 95\% CI: $[0.093, 0.146]$} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
 \subsection{Ablation Study}
 
-Table~\ref{tab:ablation} presents a full ablation at $N_{\text{ped}} = 5$, isolating the contribution of each component.
-The Social Force model reduces collision rate by 52\% and ADE by 34\% over the CV baseline.
-The Simplex monitor provides an additional 73\% collision reduction at the cost of a 6.3\% false positive brake rate.
-The combined system achieves the lowest collision rate while maintaining acceptable tracking accuracy.
+Table~\ref{tab:ablation} presents a full ablation at $N_{\text{ped}} = 5$, isolating the contribution of each component. Note that values reflect single-configuration runs and may differ slightly from the trial-averaged results in Table~\ref{tab:density_results}. The Social Force model reduces collision rate by 62\% over the CV baseline (34.5\% $\to$ 13.0\%), while also improving ADE by 34\% (0.64\,m $\to$ 0.42\,m). The Simplex monitor provides an additional 69\% collision reduction (13.0\% $\to$ 4.0\%) at the cost of a 5.7\% false positive brake rate. Removing the Simplex monitor yields slightly better ADE and FDE, since emergency braking events are excluded from trajectory error computation; the full system accepts this minor accuracy trade-off in exchange for a substantially lower collision rate.
 
-\begin{table}[!t]
-    \centering
-    \caption{Ablation study at $N_{\text{ped}} = 5$, $\tau_{\text{safe}} = 2.0$\,s. Each row removes one component from the full system. FP Brake = false positive emergency brake rate.}
-    \label{tab:ablation}
-    \renewcommand{\arraystretch}{1.15}
-    \begin{tabular}{l c c c c}
-        \toprule
-        \textbf{Configuration} & \textbf{Coll.\ (\%)} & \textbf{ADE (m)} & \textbf{FDE (m)} & \textbf{FP Brake (\%)} \\
-        \midrule
-        Full (SF-EKF + Simplex) & \textbf{2.1} & 0.42 & 0.78 & 6.3 \\
-        w/o Social Force         & 4.8 & 0.58 & 1.12 & 8.1 \\
-        w/o Simplex              & 7.8 & \textbf{0.39} & \textbf{0.71} & 0.0 \\
-        w/o Both (CV only)       & 16.4 & 0.64 & 1.24 & 0.0 \\
-        \bottomrule
-    \end{tabular}
+\begin{table}[H]
+\centering
+\caption{Ablation study at $N_{\text{ped}} = 5$, $\tau_{\text{safe}} = 2.0$\,s. Each row removes one component from the full system. Values reflect single-configuration runs. FP Brake = false positive emergency brake rate.}
+\label{tab:ablation}
+
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{l c c c c}
+\toprule
+\textbf{Config.} & \textbf{Coll. (\%)} & \textbf{ADE (m)} & \textbf{FDE (m)} & \textbf{FP Brake (\%)} \\
+\midrule
+Full (SF-EKF + Simplex) & \textbf{4.0} & 0.42 & \textbf{1.01} & 5.7 \\
+w/o Social Force & 6.0 & 0.64 & 1.56 & 8.3 \\
+w/o Simplex & 13.0 & \textbf{0.41} & \textbf{1.01} & 0.0 \\
+w/o Both (CV only) & 34.5 & 0.64 & 1.58 & 0.0 \\
+\bottomrule
+\end{tabular}
+}
 \end{table}
 
 \subsection{Safety Threshold Sensitivity}
 
-Fig.~\ref{fig:roc_threshold} shows the effect of sweeping the safety threshold $\tau_{\text{safe}}$ from 0.5\,s to 4.0\,s.
+Fig.~\ref{fig:roc_threshold} shows the effect of sweeping the safety threshold $\tau_{\text{safe}}$ from 0.5\,s to 4.0\,s at $N_{\text{ped}} = 3$ (low density).
 There is a clear trade-off: increasing $\tau_{\text{safe}}$ reduces collision rate monotonically but increases the false positive brake rate.
-The SF-EKF achieves a strictly better Pareto frontier than the CV baseline at all thresholds, and $\tau_{\text{safe}}^* = 2.0$\,s provides the best trade-off (3.1\% collision rate, 6.3\% FP brake rate for SF-EKF).
+The SF-EKF achieves a strictly better Pareto frontier than the CV baseline at all thresholds, and $\tau_{\text{safe}}^* = 2.0$\,s eliminates collisions entirely at low density (0.0\% collision rate, 26\% FP brake rate for SF-EKF), at the cost of more frequent conservative braking.
 
-\begin{figure}[!t]
+\begin{figure}[H]
     \centering
     \input{figures/roc_threshold.tex}
-    \caption{Safety threshold sweep: collision rate and false positive brake rate vs.\ $\tau_{\text{safe}}$. The SF-EKF dominates the CV baseline at all thresholds. The vertical dashed line marks $\tau^* = 2.0$\,s.}
+    \caption{Safety threshold sweep: collision rate and false positive brake rate vs.\ $\tau_{\text{safe}}$. The SF-EKF dominates the CV baseline at all thresholds.}
     \label{fig:roc_threshold}
 \end{figure}
 
 \subsection{Density-Dependent Performance Regimes}
 
-Analogous to volatility regimes in financial validation, we identify three pedestrian density regimes with qualitatively different behavior (Table~\ref{tab:regimes}):
+The collision rate and failure modes vary qualitatively across pedestrian density levels, motivating a regime-based analysis (Table~\ref{tab:regimes}):
 
 \begin{table}[!t]
     \centering
-    \caption{Performance by pedestrian density regime. The SF-EKF provides the largest \emph{relative} benefit in the medium-density regime where social interactions are significant but not overwhelming.}
+    \caption{Performance by pedestrian density regime. The SF-EKF provides the largest relative benefit in the medium-density regime where social interactions are significant but not overwhelming.}
     \label{tab:regimes}
     \renewcommand{\arraystretch}{1.15}
     \begin{tabular}{l c c c}
         \toprule
         \textbf{Regime} & \textbf{$N_{\text{ped}}$} & \textbf{CV Coll.\ (\%)} & \textbf{SF-EKF Coll.\ (\%)} \\
         \midrule
-        Low density    & 3     & 8.2  & 3.1 (62\% $\downarrow$) \\
-        Medium density & 5--7  & 22.1 & 11.2 (49\% $\downarrow$) \\
-        High density   & 10    & 41.2 & 24.3 (41\% $\downarrow$) \\
+        Low density    & 3     & 25.5 & 12.0 (53\% $\downarrow$) \\
+        Medium density & 5--7  & 42.0 & 19.0 (55\% $\downarrow$) \\
+        High density   & 10    & 56.5 & 26.5 (53\% $\downarrow$) \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-In the \emph{low-density} regime, collisions are rare and primarily caused by detection failures (YOLOv9 misses).
-In the \emph{medium-density} regime, social force prediction provides the largest benefit by anticipating avoidance maneuvers.
-In the \emph{high-density} regime, the social force model's pairwise interaction assumption breaks down in dense groups, reducing its relative advantage---though it still outperforms the CV baseline.
+In the low-density regime, collisions are rare and primarily caused by detection failures (YOLOv9 misses).
+In the medium-density regime, social force prediction provides the largest benefit by anticipating avoidance maneuvers.
+In the high-density regime, the social force model's pairwise interaction assumption breaks down in dense groups, reducing its relative advantage, though it still outperforms the CV baseline.
 
 % ============================================================
 % VIII. DISCUSSION
@@ -618,24 +568,23 @@ In the \emph{high-density} regime, the social force model's pairwise interaction
 
 \subsection{Key Insights}
 
-\paragraph{Social Force helps most at medium density}
+\paragraph{Density-dependent social force benefit}
 The SF model improves prediction when pedestrians actively avoid each other, but this benefit saturates in dense crowds where group dynamics dominate pairwise interactions.
 
-\paragraph{Importance sampling dramatically reduces sample requirements}
-The 5.2$\times$ variance reduction from IS means that equivalent estimation precision can be achieved with $\sim$96 samples instead of $\sim$500, translating to a $5\times$ reduction in expensive CARLA simulation time.
+\paragraph{Importance sampling reduces simulation cost}
+The 3.5$\times$ variance reduction from IS (and 6.2$\times$ from CE) means that equivalent estimation precision can be achieved with far fewer samples, translating directly to a reduction in expensive CARLA simulation time.
 
-\paragraph{The Simplex monitor cannot compensate for detection failures}
-When YOLOv9 misses a pedestrian entirely (no track is created), the TTC monitor has no information to act on.
-This highlights the fundamental limitation of runtime monitoring: it can only intervene on \emph{detected} hazards.
+\paragraph{Runtime monitoring is bounded by detection coverage}
+When YOLOv9 misses a pedestrian entirely (no track is created), the TTC monitor has no information to act on. This highlights a fundamental limitation of runtime monitoring: it can only intervene on detected hazards.
 
 \subsection{Limitations}
 
 \begin{itemize}
     \item \textbf{Simulation-to-real gap:} All validation is conducted in CARLA. Real-world sensor noise, weather variation, and pedestrian behavior may differ substantially.
-    \item \textbf{Ground-truth detections:} While YOLOv9 is used for detection, our failure analysis conflates detection errors with tracking errors. Isolating the tracker requires ground-truth detections.
+    \item \textbf{Conflated detection and tracking errors:} Our failure analysis does not distinguish detection failures from tracking failures. Isolating tracker performance requires ground-truth detections as input.
     \item \textbf{Fixed ego policy:} The ego vehicle follows a predetermined route at constant speed. An adaptive ego planner would alter the failure distribution.
     \item \textbf{Pairwise social force:} The Helbing--Moln\'{a}r model uses pairwise interactions. Group-level or learning-based models~\cite{alahi2016social} may better capture dense crowd dynamics.
-    \item \textbf{TTC accuracy:} The Simplex monitor's guarantee depends on accurate TTC computation. State estimation errors propagate into TTC, potentially causing both missed detections and false alarms.
+    \item \textbf{TTC accuracy:} The Simplex monitor's guarantee depends on accurate TTC computation. State estimation errors propagate into TTC, potentially causing both missed triggers and false alarms.
 \end{itemize}
 
 % ============================================================
@@ -644,15 +593,10 @@ This highlights the fundamental limitation of runtime monitoring: it can only in
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented \textsc{Simplex-Track}, a systematic validation framework for behavior-aware pedestrian tracking, applying the full safety validation pipeline from Kochenderfer et al.~\cite{kochenderfer2025validation} to a Social Force EKF tracker in CARLA.
+We presented \textsc{Simplex-Track}, a systematic validation framework for behavior-aware pedestrian tracking, applying the full safety validation pipeline from Kochenderfer et al.~\cite{kochenderfer2025validation} to a Social Force EKF tracker in CARLA. The SF-EKF reduces collision rates by 62\% over a constant-velocity baseline, with the largest gains at medium pedestrian density where social interactions are most predictive. Failure-conditioned sampling reveals that 68\% of residual collisions stem from a structured, contiguous region of close-range broadside approaches, a systematic blind spot rather than an isolated worst case. The cross-entropy method achieves a 6.2$\times$ variance reduction over direct Monte Carlo, enabling precise failure probability estimation within a limited simulation budget. The Simplex runtime monitor reduces collisions by a further 69\% at the cost of a 5.7\% false positive brake rate.
 
-Our analysis reveals that the SF-EKF reduces collision rates by 52\% over a constant-velocity baseline, with the largest improvements at medium pedestrian density where social interactions are most predictive.
-MCMC sampling identifies a concentrated failure region (close-range, broadside approaches) that accounts for 68\% of collisions.
-Importance sampling provides a 5.2$\times$ variance reduction for failure probability estimation, enabling precise characterization with limited simulation budget.
-The Simplex runtime monitor further reduces collisions by 73\% at the cost of a 6.3\% false positive brake rate.
+Taken together, these results demonstrate that formal validation methods long applied to control systems, including STL specification, optimization-based falsification, failure-conditioned sampling, and runtime monitoring, transfer directly to perception-level components. The identified failure modes provide concrete targets for future work: reducing close-range detection latency and extending the social force model to group-level interactions would address the two dominant failure causes and yield the greatest safety gains.
 
-These results demonstrate that formal validation methods---STL specification, optimization-based falsification, MCMC failure characterization, importance sampling, and runtime monitoring---can be effectively applied to perception-level components, not just control systems.
-The identified failure modes and probability estimates provide actionable guidance for system improvement: addressing close-range detection latency and dense-crowd social force modeling would yield the greatest safety gains.
 
 % ============================================================
 % CONTRIBUTIONS
@@ -661,7 +605,7 @@ The identified failure modes and probability estimates provide actionable guidan
 
 \textbf{Rahul Ayanampudi:} CARLA simulation integration, YOLOv9 + DeepSORT perception pipeline, Social Force EKF implementation, Monte Carlo failure data collection, experimental evaluation infrastructure.
 
-\textbf{Carlo Schreiber:} Formal system model and STL specification, importance sampling and cross-entropy estimation, MCMC failure distribution analysis, Simplex monitor design, Bayesian estimation, primary paper writing and figure generation.
+\textbf{Carlo Schreiber:} Formal system model and STL specification, importance sampling and cross-entropy estimation, failure distribution analysis, Simplex monitor design, Bayesian estimation, primary paper writing and figure generation.
 
 % ============================================================
 % REFERENCES
